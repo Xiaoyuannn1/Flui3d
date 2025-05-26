@@ -1,0 +1,142 @@
+solid JSCAD
+facet normal -1 0 0
+outer loop
+vertex 0 0 0
+vertex 0 0 3999.9700000000003
+vertex 0 15000.050000000001 3999.9700000000003
+endloop
+endfacet
+facet normal -1 0 0
+outer loop
+vertex 0 0 0
+vertex 0 15000.050000000001 3999.9700000000003
+vertex 0 15000.050000000001 0
+endloop
+endfacet
+facet normal 1 0 0
+outer loop
+vertex 19999.98 0 0
+vertex 19999.98 15000.050000000001 0
+vertex 19999.98 15000.050000000001 3999.9700000000003
+endloop
+endfacet
+facet normal 1 0 0
+outer loop
+vertex 19999.98 0 0
+vertex 19999.98 15000.050000000001 3999.9700000000003
+vertex 19999.98 0 3999.9700000000003
+endloop
+endfacet
+facet normal 0 -1 0
+outer loop
+vertex 0 0 0
+vertex 19999.98 0 0
+vertex 19999.98 0 3999.9700000000003
+endloop
+endfacet
+facet normal 0 -1 0
+outer loop
+vertex 0 0 0
+vertex 19999.98 0 3999.9700000000003
+vertex 0 0 3999.9700000000003
+endloop
+endfacet
+facet normal 0 1 0
+outer loop
+vertex 0 15000.050000000001 0
+vertex 0 15000.050000000001 3999.9700000000003
+vertex 19999.98 15000.050000000001 3999.9700000000003
+endloop
+endfacet
+facet normal 0 1 0
+outer loop
+vertex 0 15000.050000000001 0
+vertex 19999.98 15000.050000000001 3999.9700000000003
+vertex 19999.98 15000.050000000001 0
+endloop
+endfacet
+facet normal 0 0 -1
+outer loop
+vertex 0 0 0
+vertex 0 15000.050000000001 0
+vertex 19999.98 15000.050000000001 0
+endloop
+endfacet
+facet normal 0 0 -1
+outer loop
+vertex 0 0 0
+vertex 19999.98 15000.050000000001 0
+vertex 19999.98 0 0
+endloop
+endfacet
+facet normal 0 0 1
+outer loop
+vertex 0 0 3999.9700000000003
+vertex 19999.98 0 3999.9700000000003
+vertex 19999.98 15000.050000000001 3999.9700000000003
+endloop
+endfacet
+facet normal 0 0 1
+outer loop
+vertex 0 0 3999.9700000000003
+vertex 19999.98 15000.050000000001 3999.9700000000003
+vertex 0 15000.050000000001 3999.9700000000003
+endloop
+endfacet
+facet normal 0.9647653999532176 -0.26311161710024866 0
+outer loop
+vertex 6000.02 5500.04 599.95
+vertex 6000.02 5500.04 199.94
+vertex 7499.96 10999.95 199.94
+endloop
+endfacet
+facet normal 0.9647653999532176 -0.26311161710024866 0
+outer loop
+vertex 6000.02 5500.04 599.95
+vertex 7499.96 10999.95 199.94
+vertex 7499.96 10999.95 599.95
+endloop
+endfacet
+facet normal 0 1 0
+outer loop
+vertex 13000 5500.04 599.95
+vertex 13000 5500.04 199.94
+vertex 6000.02 5500.04 199.94
+endloop
+endfacet
+facet normal 0 1 0
+outer loop
+vertex 13000 5500.04 599.95
+vertex 6000.02 5500.04 199.94
+vertex 6000.02 5500.04 599.95
+endloop
+endfacet
+facet normal -0.707098424382677 -0.707115137891656 0
+outer loop
+vertex 7499.96 10999.95 599.95
+vertex 7499.96 10999.95 199.94
+vertex 13000 5500.04 199.94
+endloop
+endfacet
+facet normal -0.707098424382677 -0.707115137891656 0
+outer loop
+vertex 7499.96 10999.95 599.95
+vertex 13000 5500.04 199.94
+vertex 13000 5500.04 599.95
+endloop
+endfacet
+facet normal 0 0 -1
+outer loop
+vertex 6000.02 5500.04 599.95
+vertex 7499.96 10999.95 599.95
+vertex 13000 5500.04 599.95
+endloop
+endfacet
+facet normal 0 0 1
+outer loop
+vertex 13000 5500.04 199.94
+vertex 7499.96 10999.95 199.94
+vertex 6000.02 5500.04 199.94
+endloop
+endfacet
+endsolid JSCAD

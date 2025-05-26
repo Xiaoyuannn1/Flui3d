@@ -1,5 +1,9 @@
 {
   "compilerOptions": {
+    "typeRoots": [
+      "./@types",
+      "./node_modules/@types"
+    ],
     "outDir": "dist",
     "target": "esnext",
     "module": "commonjs",
@@ -14,7 +18,7 @@
     "sourceMap": true,
     "baseUrl": ".",
     "types": [
-      "webpack-env","node"
+      "webpack-env","node","jscad__stl-serializer"
     ],
     "paths": {
       "@/*": [
@@ -34,8 +38,7 @@
     "src/**/*.vue",
     "tests/**/*.ts",
     "tests/**/*.tsx", "src/lang/index.js",
-    "src/**/*",
-    "src/types/**/*"],
+    "src/**/*"],
   "exclude": [
     "node_modules"
   ]

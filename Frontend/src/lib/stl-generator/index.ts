@@ -1,8 +1,10 @@
 import { readDesignJson } from './parser/jsonParser'
-import { ChipJSON, Shape, CircleShape, LineShape } from './model/types'
+import { ChipJSON, Shape, CircleShape, LineShape, PolygonShape, CurveShape } from './model/types'
 import { precisionMap } from './utils'
 import { buildCircle } from './builder/shapes/circle'
 import { buildLine } from './builder/shapes/line'
+import { buildPolygon } from './builder/shapes/polygon'
+import { buildCurve   } from './builder/shapes/curve'
 import { merge } from './builder/boolean'
 import { writeStl } from './exporter'
 import { cuboid } from '@jscad/modeling/src/primitives/index'
@@ -40,6 +42,12 @@ export async function generateStl(jsonPath: string, outPath: string) {
             case 'Line':
                 csg = buildLine(shape as LineShape)
                 break
+            case 'Polygon':
+                csg = buildPolygon(shape as PolygonShape)
+                break
+            case 'Curve':
+                csg = buildCurve(shape as CurveShape, segments)
+                break
             default:
                 console.warn(`Unsupported shape type: ${(shape as any).type}`)
                 return
@@ -71,5 +79,5 @@ export async function generateStl(jsonPath: string, outPath: string) {
     }
 
     // 导出STL文件
-    await writeStl(model, outPath)
+    return await writeStl(model, outPath)
 }

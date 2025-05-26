@@ -20,5 +20,5 @@ export function buildLine(shape: LineShape) {
     // 平移到起点位置
     // shape.start.x, shape.start.y 是基于芯片左下角(0,0)的坐标
     // shape.start.z 是通道底面的高度
-    return translate([shape.start.x, shape.start.y, shape.start.z], rotated)
+    return translate([shape.start.x, shape.start.y, shape.start.z - shape.height / 2], rotated)
 }

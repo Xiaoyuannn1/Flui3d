@@ -17,26 +17,26 @@ export interface LineShape {
     fill?: boolean
 }
 
-// export interface PolygonShape {
-//     type: 'Polygon'
-//     points: Point3[]
-//     direction: Point3
-//     fill?: boolean
-// }
-//
-// export interface CurveShape {
-//     type: 'Curve'
-//     start: Point3
-//     end: Point3
-//     center: Point3
-//     tangent: Point3
-//     width: number
-//     height: number
-//     fill?: boolean
-// }
-// export type Shape = CircleShape | LineShape | PolygonShape | CurveShape
+export interface PolygonShape {
+    type: 'Polygon'
+    points : Point3[]  // 所有顶点 z 相同
+    direction: Point3 //
+    fill?: boolean
+}
 
-export type Shape = CircleShape | LineShape
+export interface CurveShape {
+    type: 'Curve'
+    start: Point3
+    end: Point3
+    center: Point3          // 圆弧圆心
+    tangent?: Point3        // 先留字段，未来支持贝塞尔
+    width: number
+    height: number
+    fill?: boolean          // channel 中也可能要 union
+}
+
+export type Shape = CircleShape | LineShape | PolygonShape | CurveShape
+
 
 export interface Channel {shapes: Shape[] }
 

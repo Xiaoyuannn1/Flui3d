@@ -9,11 +9,11 @@ export function buildCircle(shape: CircleShape, segments: number) {
     const cyl = cylinder({
         height: shape.height,
         radius: shape.radius,
-        segments: segments,
-        center: [0, 0, shape.height/2]  // 圆柱体底面在z=0
+        segments: segments
     })
 
     // 平移到设计中指定的位置
     // 这里的坐标就是JSON中的坐标，都是相对于芯片左下角(0,0,0)的
-    return translate([shape.center.x, shape.center.y, shape.center.z], cyl)
+    // circle数据的"z": 200，指的是当前层elevation高度。circle translate的坐标其实是圆柱体的中心位置，而不是底面中心的位置
+    return translate([shape.center.x, shape.center.y, shape.center.z + shape.height / 2], cyl)
 }
