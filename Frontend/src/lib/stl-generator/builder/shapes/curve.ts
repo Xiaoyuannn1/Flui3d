@@ -2,29 +2,58 @@ import { union } from '@jscad/modeling/src/operations/booleans'
 import { LineShape, CurveShape } from '../../model/types'
 import { buildLine } from './line'
 
-export function buildCurve(shape: CurveShape, segments:number) {
-    // ① 圆弧半径与角度
-    const cx = shape.center.x, cy = shape.center.y
-    const r  = Math.hypot(shape.start.x - cx, shape.start.y - cy)
-    const a0 = Math.atan2(shape.start.y - cy, shape.start.x - cx)
-    const a1 = Math.atan2(shape.end  .y - cy, shape.end  .x - cx)
+/**
+ * 把圆弧离散成 N 条小线段，再复用 buildLine
+ * @param shape   JSON 中 Curve 对象
+ * @param segments 建模精度（Medium=32 等），决定离散条数基线
+ */
+export function buildCurve(shape: CurveShape, segments: number) {
+    const { start, end, center, width, height } = shape
 
-    // ② 均分弧度
-    const N = segments      // 32 / 64 与精度保持一致
-    const da = (a1 - a0) / N
+    /* ==== 1. 计算半径 / 起止角 ==== */
+    const rsx = start.x - center.x, rsy = start.y - center.y
+    const radius = Math.hypot(rsx, rsy)
+    const ang0 = Math.atan2(rsy, rsx)
+    let ang1 = Math.atan2(end.y - center.y, end.x - center.x)
 
+    /* ==== 2. 用切向量判断方向 ==== */
+    const tan = shape.tangent ?? { x: -(rsy), y: rsx } // 若没填，默认逆时针
+    const cross = rsx * tan.y - rsy * tan.x            // z 分量
+
+    if (cross > 0) {          // CCW
+        if (ang1 <= ang0) ang1 += 2 * Math.PI
+    } else {                  // CW
+        if (ang1 >= ang0) ang1 -= 2 * Math.PI
+    }
+    const sweep = ang1 - ang0          // 正 = CCW，负 = CW
+
+    /* ==== 3. 决定离散条数 N ==== */
+    const N = Math.max(4, Math.ceil(Math.abs(sweep) / (Math.PI / segments)))
+
+    /* ==== 4. 生成 N 条小 Line cuboid ==== */
     const parts = []
-    for (let i=0;i<N;i++){
-        const t0 = a0 + i*da, t1 = a0 + (i+1)*da
-        const p0 = { x: cx + r*Math.cos(t0), y: cy + r*Math.sin(t0), z: shape.start.z }
-        const p1 = { x: cx + r*Math.cos(t1), y: cy + r*Math.sin(t1), z: shape.start.z }
+    for (let i = 0; i < N; i++) {
+        const a0 = ang0 + (sweep * i)     / N
+        const a1 = ang0 + (sweep * (i+1)) / N
+
+        const p0 = { x: center.x + radius * Math.cos(a0),
+            y: center.y + radius * Math.sin(a0),
+            z: start.z }                 // z 仍是“中心高度”
+
+        const p1 = { x: center.x + radius * Math.cos(a1),
+            y: center.y + radius * Math.sin(a1),
+            z: start.z }
 
         const seg: LineShape = {
-            type:'Line',
-            start:p0, end:p1,
-            width:shape.width, height:shape.height
+            type: 'Line',
+            start: p0,
+            end  : p1,
+            width,
+            height
         }
         parts.push(buildLine(seg))
     }
+
+    /* ==== 5. 并集为完整弧形通道 ==== */
     return union(...parts)
 }
