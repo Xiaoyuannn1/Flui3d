@@ -57,10 +57,7 @@
 //     /* ==== 5. 并集为完整弧形通道 ==== */
 //     return union(...parts)
 // }
-// src/lib/stl-generator/builder/shapes/curve.ts
-// src/lib/stl-generator/builder/shapes/curve.ts
-// src/lib/stl-generator/builder/shapes/curve.ts
-// src/lib/stl-generator/builder/shapes/curve.ts
+
 // src/lib/stl-generator/builder/shapes/curve.ts
 
 import { fromPoints }   from '@jscad/modeling/src/geometries/geom2'
@@ -70,21 +67,30 @@ import type { Geom2, Geom3 } from '@jscad/modeling/src/geometries/types'
 import { CurveShape }     from '../../model/types'
 
 /**
- * 直接构造环扇形多边形（outer arc + inner arc），再一次性挤出成 3D 管道。
+ * 计算多边形的有符号面积，< 0 表示顺时针，> 0 表示逆时针
  */
+function shoelace(pts: [number, number][]): number {
+    let sum = 0
+    for (let i = 0; i < pts.length; i++) {
+        const [x1, y1] = pts[i]
+        const [x2, y2] = pts[(i + 1) % pts.length]
+        sum += x1 * y2 - y1 * x2
+    }
+    return sum / 2
+}
+
 export function buildCurve(shape: CurveShape, precision: number): Geom3 {
     const { start, end, center, tangent, width, height } = shape
-    // 参数校验
     if (width <= 0 || height <= 0) return null as any
 
-    // 1. 计算基础
+    // 1. 计算圆弧参数
     const rx = start.x - center.x, ry = start.y - center.y
     const r0 = Math.hypot(rx, ry)
     if (r0 < 1e-6) return null as any
     const ang0 = Math.atan2(ry, rx)
     let ang1 = Math.atan2(end.y - center.y, end.x - center.x)
 
-    // 2. 确定弧向
+    // 2. 判定顺/逆时针
     const tan = tangent ?? { x:-ry, y:rx, z:0 }
     const crossZ = rx * tan.y - ry * tan.x
     if (crossZ > 0) { if (ang1 <= ang0) ang1 += 2*Math.PI }
@@ -92,27 +98,36 @@ export function buildCurve(shape: CurveShape, precision: number): Geom3 {
     let sweep = ang1 - ang0
     if (Math.abs(sweep) > Math.PI) sweep += sweep>0 ? -2*Math.PI : 2*Math.PI
 
-    // 3. 生成外/内弧上的采样点
+    // 3. 采样点数
     const full = Math.PI*2
-    const frac = Math.abs(sweep)/full
-    const segments = Math.max(8, Math.ceil(precision * frac * 2))
+    const frac = Math.abs(sweep) / full
+    const N = Math.max(8, Math.ceil(precision * frac * 1.2))
+
+    // 4. 构造环扇形多边形（外弧 + 内弧）
     const outer: [number,number][] = []
     const inner: [number,number][] = []
-    const rOut = r0 + width/2
-    const rIn  = r0 - width/2
-    for (let i=0; i<=segments; i++) {
-        const t = ang0 + sweep * (i/segments)
-        outer.push([ center.x + rOut * Math.cos(t), center.y + rOut * Math.sin(t) ])
-        inner.unshift([ center.x + rIn  * Math.cos(t), center.y + rIn  * Math.sin(t) ])
+    const rOut = r0 + width/2, rIn = r0 - width/2
+    for (let i = 0; i <= N; i++) {
+        const θ = ang0 + sweep * (i / N)
+        outer.push([ center.x + rOut * Math.cos(θ), center.y + rOut * Math.sin(θ) ])
+        inner.unshift([ center.x + rIn  * Math.cos(θ), center.y + rIn  * Math.sin(θ) ])
     }
 
-    // 4. 合并成环扇形多边形（outer→inner）
-    const pts2D = outer.concat(inner) as [number,number][]
+    // 5. 组合点并检查方向
+    let pts2D = outer.concat(inner) as [number,number][]
+
+    // 6. 修正多边形方向：确保是逆时针（正面积）
+    if (shoelace(pts2D) < 0) {
+        pts2D = pts2D.reverse()
+        // console.log('Curve: 修正多边形方向（顺时针 -> 逆时针）')
+    }
+
     const shape2d: Geom2 = fromPoints(pts2D)
 
-    // 5. 一次性挤出
+    // 7. 一次性挤出成3D管道
     let solid: Geom3 = extrudeLinear({ height }, shape2d)
-    // 底面在 z = start.z
+
+    // 8. 抬升到正确底面高度：start.z - height/2
     solid = translate([0, 0, start.z - height/2], solid)
 
     return solid
