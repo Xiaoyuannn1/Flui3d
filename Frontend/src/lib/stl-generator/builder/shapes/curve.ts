@@ -1,68 +1,9 @@
-// import { union } from '@jscad/modeling/src/operations/booleans'
-// import { LineShape, CurveShape } from '../../model/types'
-// import { buildLine } from './line'
-//
-// /**
-//  * 把圆弧离散成 N 条小线段，再复用 buildLine
-//  * @param shape   JSON 中 Curve 对象
-//  * @param segments 建模精度（Medium=32 等），决定离散条数基线
-//  */
-// export function buildCurve(shape: CurveShape, segments: number) {
-//     const { start, end, center, width, height } = shape
-//
-//     /* ==== 1. 计算半径 / 起止角 ==== */
-//     const rsx = start.x - center.x, rsy = start.y - center.y
-//     const radius = Math.hypot(rsx, rsy)
-//     const ang0 = Math.atan2(rsy, rsx)
-//     let ang1 = Math.atan2(end.y - center.y, end.x - center.x)
-//
-//     /* ==== 2. 用切向量判断方向 ==== */
-//     const tan = shape.tangent ?? { x: -(rsy), y: rsx } // 若没填，默认逆时针
-//     const cross = rsx * tan.y - rsy * tan.x            // z 分量
-//
-//     if (cross > 0) {          // CCW
-//         if (ang1 <= ang0) ang1 += 2 * Math.PI
-//     } else {                  // CW
-//         if (ang1 >= ang0) ang1 -= 2 * Math.PI
-//     }
-//     const sweep = ang1 - ang0          // 正 = CCW，负 = CW
-//
-//     /* ==== 3. 决定离散条数 N ==== */
-//     const N = Math.max(4, Math.ceil(Math.abs(sweep) / (Math.PI / segments)))
-//
-//     /* ==== 4. 生成 N 条小 Line cuboid ==== */
-//     const parts = []
-//     for (let i = 0; i < N; i++) {
-//         const a0 = ang0 + (sweep * i)     / N
-//         const a1 = ang0 + (sweep * (i+1)) / N
-//
-//         const p0 = { x: center.x + radius * Math.cos(a0),
-//             y: center.y + radius * Math.sin(a0),
-//             z: start.z }                 // z 仍是“中心高度”
-//
-//         const p1 = { x: center.x + radius * Math.cos(a1),
-//             y: center.y + radius * Math.sin(a1),
-//             z: start.z }
-//
-//         const seg: LineShape = {
-//             type: 'Line',
-//             start: p0,
-//             end  : p1,
-//             width,
-//             height
-//         }
-//         parts.push(buildLine(seg))
-//     }
-//
-//     /* ==== 5. 并集为完整弧形通道 ==== */
-//     return union(...parts)
-// }
-
+// ✅ 简化的桥结构Curve实现
 // src/lib/stl-generator/builder/shapes/curve.ts
 
 import { fromPoints }   from '@jscad/modeling/src/geometries/geom2'
 import { extrudeLinear } from '@jscad/modeling/src/operations/extrusions'
-import { translate }     from '@jscad/modeling/src/operations/transforms'
+import { translate, rotate }     from '@jscad/modeling/src/operations/transforms'
 import type { Geom2, Geom3 } from '@jscad/modeling/src/geometries/types'
 import { CurveShape }     from '../../model/types'
 
@@ -79,9 +20,25 @@ function shoelace(pts: [number, number][]): number {
     return sum / 2
 }
 
-export function buildCurve(shape: CurveShape, precision: number): Geom3 {
+/**
+ * 检查是否为桥结构curve
+ */
+function isBridgeCurve(shape: CurveShape): boolean {
+    const { start, end, center } = shape
+
+    const zDiffStartEnd = Math.abs(start.z - end.z)
+    const zDiffStartCenter = Math.abs(start.z - center.z)
+    const zDiffEndCenter = Math.abs(end.z - center.z)
+
+    const maxZDiff = Math.max(zDiffStartEnd, zDiffStartCenter, zDiffEndCenter)
+    return maxZDiff > 1e-6
+}
+
+/**
+ * 构建平面Curve（原有逻辑，完全不变）
+ */
+function buildFlatCurve(shape: CurveShape, precision: number): Geom3 {
     const { start, end, center, tangent, width, height } = shape
-    if (width <= 0 || height <= 0) return null as any
 
     // 1. 计算圆弧参数
     const rx = start.x - center.x, ry = start.y - center.y
@@ -115,20 +72,144 @@ export function buildCurve(shape: CurveShape, precision: number): Geom3 {
 
     // 5. 组合点并检查方向
     let pts2D = outer.concat(inner) as [number,number][]
-
-    // 6. 修正多边形方向：确保是逆时针（正面积）
     if (shoelace(pts2D) < 0) {
         pts2D = pts2D.reverse()
-        // console.log('Curve: 修正多边形方向（顺时针 -> 逆时针）')
     }
 
     const shape2d: Geom2 = fromPoints(pts2D)
-
-    // 7. 一次性挤出成3D管道
     let solid: Geom3 = extrudeLinear({ height }, shape2d)
-
-    // 8. 抬升到正确底面高度：start.z - height/2
     solid = translate([0, 0, start.z - height/2], solid)
 
     return solid
+}
+
+/**
+ * 构建桥结构Curve - 在垂直平面内画圆弧，然后沿法向量拉伸
+ */
+function buildBridgeCurve(shape: CurveShape, precision: number): Geom3 {
+    console.log('Building bridge curve - vertical plane approach')
+
+    const { start, end, center, tangent, width, height } = shape
+
+    // 1. 确定垂直平面
+    // 垂直平面包含start和end点，垂直于XY平面
+    const pathDirX = end.x - start.x
+    const pathDirY = end.y - start.y
+    const pathLength = Math.sqrt(pathDirX * pathDirX + pathDirY * pathDirY)
+
+    if (pathLength < 1e-6) {
+        console.log('Vertical curve detected - path length too small')
+        return null as any
+    }
+
+    // 垂直平面的X轴方向（标准化）
+    const planeX_x = pathDirX / pathLength
+    const planeX_y = pathDirY / pathLength
+    // 垂直平面的Y轴方向就是Z轴
+    const planeY_x = 0, planeY_y = 0, planeY_z = 1
+
+    console.log('Vertical plane X-axis:', `(${planeX_x.toFixed(3)}, ${planeX_y.toFixed(3)}, 0)`)
+
+    // 2. 将3D点转换到垂直平面的2D坐标系
+    function to2D(point: {x: number, y: number, z: number}) {
+        // 以start为原点
+        const relX = point.x - start.x
+        const relY = point.y - start.y
+        const relZ = point.z - start.z
+
+        // 在垂直平面内的坐标
+        const u = relX * planeX_x + relY * planeX_y  // 沿路径方向
+        const v = relZ                                // 沿Z轴方向
+        return { u, v }
+    }
+
+    const start2D = to2D(start)      // (0, 0)
+    const end2D = to2D(end)          // (pathLength, end.z - start.z)
+    const center2D = to2D(center)    // 转换后的圆心
+
+    console.log('2D coordinates:', {
+        start2D: `(${start2D.u.toFixed(1)}, ${start2D.v.toFixed(1)})`,
+        end2D: `(${end2D.u.toFixed(1)}, ${end2D.v.toFixed(1)})`,
+        center2D: `(${center2D.u.toFixed(1)}, ${center2D.v.toFixed(1)})`
+    })
+
+    // 3. 在2D垂直平面内计算圆弧参数
+    const ru = start2D.u - center2D.u
+    const rv = start2D.v - center2D.v
+    const radius = Math.sqrt(ru * ru + rv * rv)
+
+    if (radius < 1e-6) {
+        console.error('Radius too small in vertical plane:', radius)
+        return null as any
+    }
+
+    const ang0 = Math.atan2(rv, ru)
+    const ang1 = Math.atan2(end2D.v - center2D.v, end2D.u - center2D.u)
+
+    // 4. 简化的角度扫掠计算
+    let sweep = ang1 - ang0
+    if (Math.abs(sweep) > Math.PI) {
+        sweep += sweep > 0 ? -2 * Math.PI : 2 * Math.PI
+    }
+
+    console.log('2D arc parameters:', {
+        radius: radius.toFixed(2),
+        startAngle: (ang0 * 180 / Math.PI).toFixed(1) + '°',
+        endAngle: (ang1 * 180 / Math.PI).toFixed(1) + '°',
+        sweep: (sweep * 180 / Math.PI).toFixed(1) + '°'
+    })
+
+    // 5. 在2D垂直平面内构造环扇形多边形
+    const frac = Math.abs(sweep) / (Math.PI * 2)
+    const N = Math.max(8, Math.ceil(precision * frac * 1.2))
+
+    const outer: [number,number][] = []
+    const inner: [number,number][] = []
+    const rOut = radius + width/2, rIn = radius - width/2
+
+    for (let i = 0; i <= N; i++) {
+        const θ = ang0 + sweep * (i / N)
+        // 在2D垂直平面内的点
+        const u_outer = center2D.u + rOut * Math.cos(θ)
+        const v_outer = center2D.v + rOut * Math.sin(θ)
+        const u_inner = center2D.u + rIn * Math.cos(θ)
+        const v_inner = center2D.v + rIn * Math.sin(θ)
+
+        outer.push([u_outer, v_outer])
+        inner.unshift([u_inner, v_inner])
+    }
+
+    // 6. 组合点并检查方向
+    let pts2D = outer.concat(inner) as [number,number][]
+    if (shoelace(pts2D) < 0) {
+        pts2D = pts2D.reverse()
+    }
+
+    // 7. 创建2D形状并拉伸
+    const shape2d: Geom2 = fromPoints(pts2D)
+    let solid: Geom3 = extrudeLinear({ height }, shape2d)
+
+    // 8. 旋转到正确的垂直平面方向
+    const planeAngle = Math.atan2(planeX_y, planeX_x)  // 垂直平面的方向角
+    if (Math.abs(planeAngle) > 1e-6) {
+        solid = rotate([0, 0, planeAngle], solid)
+    }
+
+    // 9. 平移到起点位置
+    solid = translate([start.x, start.y, start.z - height/2], solid)
+
+    return solid
+}
+
+export function buildCurve(shape: CurveShape, precision: number): Geom3 {
+    const { start, end, center, tangent, width, height } = shape
+    if (width <= 0 || height <= 0) return null as any
+
+    if (isBridgeCurve(shape)) {
+        console.log('Detected bridge curve')
+        return buildBridgeCurve(shape, precision)
+    } else {
+        console.log('Using flat curve')
+        return buildFlatCurve(shape, precision)
+    }
 }
