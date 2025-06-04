@@ -42,7 +42,6 @@ function buildFlatLine(shape: LineShape) {
  * 构建桥结构Line（简单的3D长方体）
  */
 function buildBridgeLine(shape: LineShape) {
-    console.log('Building bridge line - simple 3D approach')
 
     const { start, end, width, height } = shape
 

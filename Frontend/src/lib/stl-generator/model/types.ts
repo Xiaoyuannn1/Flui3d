@@ -35,7 +35,16 @@ export interface CurveShape {
     fill?: boolean          // channel 中也可能要 union
 }
 
-export type Shape = CircleShape | LineShape | PolygonShape | CurveShape
+export interface ChamferShape {
+    type: 'Chamfer'
+    center: Point3
+    radius: number       // 底部半径
+    radius_top: number   // 顶部半径
+    height: number
+    fill?: boolean
+}
+
+export type Shape = CircleShape | LineShape | PolygonShape | CurveShape | ChamferShape
 
 
 export interface Channel {shapes: Shape[] }
@@ -52,9 +61,13 @@ export interface Layer {
     channels: Channel[]
 }
 
+export interface CrossLayerConnection {
+    shapes: Shape[]
+}
+
 export interface ChipJSON {
     layers: Layer[]
-    crosslayerConnections?: any[]
+    crosslayerConnections: CrossLayerConnection[]
     relation?: any[]
     general: {
         length: number

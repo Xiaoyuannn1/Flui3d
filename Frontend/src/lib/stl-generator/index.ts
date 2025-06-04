@@ -1,5 +1,5 @@
 import { readDesignJson } from './parser/jsonParser'
-import { ChipJSON, Shape, CircleShape, LineShape, PolygonShape, CurveShape } from './model/types'
+import { ChipJSON, Shape, CircleShape, LineShape, PolygonShape, CurveShape,ChamferShape } from './model/types'
 import { precisionMap } from './utils'
 import { buildCircle } from './builder/shapes/circle'
 import { buildLine } from './builder/shapes/line'
@@ -8,6 +8,8 @@ import { buildCurve   } from './builder/shapes/curve'
 import { merge } from './builder/boolean'
 import { writeStl } from './exporter'
 import { cuboid } from '@jscad/modeling/src/primitives/index'
+import { buildChamfer } from './builder/shapes/chamfer'
+
 
 export async function generateStl(jsonPath: string, outPath: string) {
     const design: ChipJSON = readDesignJson(jsonPath)
@@ -48,6 +50,9 @@ export async function generateStl(jsonPath: string, outPath: string) {
             case 'Curve':
                 csg = buildCurve(shape as CurveShape, segments)
                 break
+            case "Chamfer":
+                csg = buildChamfer(shape as ChamferShape, segments)
+                break
             default:
                 console.warn(`Unsupported shape type: ${(shape as any).type}`)
                 return
@@ -75,6 +80,13 @@ export async function generateStl(jsonPath: string, outPath: string) {
         // 处理层级的通道
         for (const chan of layer.channels) {
             chan.shapes.forEach(handleShape)
+        }
+    }
+    //遍历所有跨层连接
+    for (const cross of design.crosslayerConnections) {
+        // 处理跨层连接中的形状
+        for (const shape of cross.shapes) {
+            handleShape(shape)
         }
     }
 

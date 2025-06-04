@@ -1,4 +1,3 @@
-// ✅ 简化的桥结构Curve实现
 // src/lib/stl-generator/builder/shapes/curve.ts
 
 import { fromPoints }   from '@jscad/modeling/src/geometries/geom2'
@@ -84,48 +83,59 @@ function buildFlatCurve(shape: CurveShape, precision: number): Geom3 {
 }
 
 /**
- * 构建桥结构Curve - 在垂直平面内画圆弧，然后沿法向量拉伸
+ * 构建桥结构Curve - 正确的垂直平面方法
  */
 function buildBridgeCurve(shape: CurveShape, precision: number): Geom3 {
-    console.log('Building bridge curve - vertical plane approach')
+    console.log('Building bridge curve - correct vertical plane approach')
 
     const { start, end, center, tangent, width, height } = shape
 
     // 1. 确定垂直平面
-    // 垂直平面包含start和end点，垂直于XY平面
     const pathDirX = end.x - start.x
     const pathDirY = end.y - start.y
     const pathLength = Math.sqrt(pathDirX * pathDirX + pathDirY * pathDirY)
 
     if (pathLength < 1e-6) {
-        console.log('Vertical curve detected - path length too small')
+        console.log('Path length too small')
         return null as any
     }
 
-    // 垂直平面的X轴方向（标准化）
-    const planeX_x = pathDirX / pathLength
-    const planeX_y = pathDirY / pathLength
-    // 垂直平面的Y轴方向就是Z轴
-    const planeY_x = 0, planeY_y = 0, planeY_z = 1
+    // 2. 建立垂直平面的坐标系
+    // u轴：沿路径方向（标准化）
+    const uAxisX = pathDirX / pathLength
+    const uAxisY = pathDirY / pathLength
+    const uAxisZ = 0
 
-    console.log('Vertical plane X-axis:', `(${planeX_x.toFixed(3)}, ${planeX_y.toFixed(3)}, 0)`)
+    // v轴：沿Z轴方向
+    const vAxisX = 0, vAxisY = 0, vAxisZ = 1
 
-    // 2. 将3D点转换到垂直平面的2D坐标系
+    // w轴：垂直平面的法向量（u × v）
+    const wAxisX = uAxisY * vAxisZ - uAxisZ * vAxisY  // = uAxisY
+    const wAxisY = uAxisZ * vAxisX - uAxisX * vAxisZ  // = -uAxisX
+    const wAxisZ = uAxisX * vAxisY - uAxisY * vAxisX  // = 0
+
+    console.log('Coordinate system:', {
+        uAxis: `(${uAxisX.toFixed(3)}, ${uAxisY.toFixed(3)}, ${uAxisZ})`,
+        vAxis: `(${vAxisX}, ${vAxisY}, ${vAxisZ})`,
+        wAxis: `(${wAxisX.toFixed(3)}, ${wAxisY.toFixed(3)}, ${wAxisZ})`
+    })
+
+    // 3. 将3D点转换到垂直平面的2D坐标系
     function to2D(point: {x: number, y: number, z: number}) {
-        // 以start为原点
+        // 相对于start的偏移
         const relX = point.x - start.x
         const relY = point.y - start.y
         const relZ = point.z - start.z
 
         // 在垂直平面内的坐标
-        const u = relX * planeX_x + relY * planeX_y  // 沿路径方向
-        const v = relZ                                // 沿Z轴方向
+        const u = relX * uAxisX + relY * uAxisY + relZ * uAxisZ
+        const v = relX * vAxisX + relY * vAxisY + relZ * vAxisZ
         return { u, v }
     }
 
     const start2D = to2D(start)      // (0, 0)
-    const end2D = to2D(end)          // (pathLength, end.z - start.z)
-    const center2D = to2D(center)    // 转换后的圆心
+    const end2D = to2D(end)
+    const center2D = to2D(center)
 
     console.log('2D coordinates:', {
         start2D: `(${start2D.u.toFixed(1)}, ${start2D.v.toFixed(1)})`,
@@ -133,20 +143,20 @@ function buildBridgeCurve(shape: CurveShape, precision: number): Geom3 {
         center2D: `(${center2D.u.toFixed(1)}, ${center2D.v.toFixed(1)})`
     })
 
-    // 3. 在2D垂直平面内计算圆弧参数
+    // 4. 在2D垂直平面内计算圆弧参数
     const ru = start2D.u - center2D.u
     const rv = start2D.v - center2D.v
     const radius = Math.sqrt(ru * ru + rv * rv)
 
     if (radius < 1e-6) {
-        console.error('Radius too small in vertical plane:', radius)
+        console.error('Radius too small:', radius)
         return null as any
     }
 
     const ang0 = Math.atan2(rv, ru)
     const ang1 = Math.atan2(end2D.v - center2D.v, end2D.u - center2D.u)
 
-    // 4. 简化的角度扫掠计算
+    // 5. 角度扫掠计算
     let sweep = ang1 - ang0
     if (Math.abs(sweep) > Math.PI) {
         sweep += sweep > 0 ? -2 * Math.PI : 2 * Math.PI
@@ -154,22 +164,19 @@ function buildBridgeCurve(shape: CurveShape, precision: number): Geom3 {
 
     console.log('2D arc parameters:', {
         radius: radius.toFixed(2),
-        startAngle: (ang0 * 180 / Math.PI).toFixed(1) + '°',
-        endAngle: (ang1 * 180 / Math.PI).toFixed(1) + '°',
         sweep: (sweep * 180 / Math.PI).toFixed(1) + '°'
     })
 
-    // 5. 在2D垂直平面内构造环扇形多边形
+    // 6. 在2D垂直平面内构造环扇形
     const frac = Math.abs(sweep) / (Math.PI * 2)
     const N = Math.max(8, Math.ceil(precision * frac * 1.2))
 
     const outer: [number,number][] = []
     const inner: [number,number][] = []
-    const rOut = radius + width/2, rIn = radius - width/2
+    const rOut = radius + height/2, rIn = radius - height/2  // 注意：这里height是通道高度
 
     for (let i = 0; i <= N; i++) {
         const θ = ang0 + sweep * (i / N)
-        // 在2D垂直平面内的点
         const u_outer = center2D.u + rOut * Math.cos(θ)
         const v_outer = center2D.v + rOut * Math.sin(θ)
         const u_inner = center2D.u + rIn * Math.cos(θ)
@@ -179,24 +186,29 @@ function buildBridgeCurve(shape: CurveShape, precision: number): Geom3 {
         inner.unshift([u_inner, v_inner])
     }
 
-    // 6. 组合点并检查方向
+    // 7. 组合点并检查方向
     let pts2D = outer.concat(inner) as [number,number][]
     if (shoelace(pts2D) < 0) {
         pts2D = pts2D.reverse()
     }
 
-    // 7. 创建2D形状并拉伸
+    // 8. 创建2D形状并沿法向量拉伸
     const shape2d: Geom2 = fromPoints(pts2D)
-    let solid: Geom3 = extrudeLinear({ height }, shape2d)
 
-    // 8. 旋转到正确的垂直平面方向
-    const planeAngle = Math.atan2(planeX_y, planeX_x)  // 垂直平面的方向角
+    // 关键：沿w轴（法向量）拉伸，给通道宽度
+    let solid: Geom3 = extrudeLinear({ height: width }, shape2d)
+
+    // 9.进行90°旋转
+    solid = rotate([Math.PI/2, 0, 0], solid)
+
+    // 10. 旋转到正确的垂直平面方向
+    const planeAngle = Math.atan2(uAxisY, uAxisX)
     if (Math.abs(planeAngle) > 1e-6) {
         solid = rotate([0, 0, planeAngle], solid)
     }
 
-    // 9. 平移到起点位置
-    solid = translate([start.x, start.y, start.z - height/2], solid)
+    // 11. 平移到起点位置
+    solid = translate([start.x, start.y, start.z], solid)
 
     return solid
 }
