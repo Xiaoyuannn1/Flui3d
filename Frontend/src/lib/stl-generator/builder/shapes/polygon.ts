@@ -168,13 +168,6 @@ function buildVerticalPolygon(shape: PolygonShape) {
 
 
 
-
-    // // 10. 镜像到正确的方向
-    // solid = mirror({ normal: [0, 0, 1] }, solid)
-    //
-    // solid = rotate([0, 0, Math.PI], solid)
-
-
     // 11. 平移到起点位置
     solid = translate([point1.x, point1.y, point1.z], solid)
 

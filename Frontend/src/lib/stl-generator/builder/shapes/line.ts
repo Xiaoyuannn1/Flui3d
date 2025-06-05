@@ -35,9 +35,33 @@ function buildFlatLine(shape: LineShape) {
     }
 
     // 平移到起点位置
-    return translate([start.x, start.y, start.z - height / 2], box)
+    return translate([start.x, start.y, start.z-height/2], box)
 }
 
+
+function rotatePointByPitchThenYaw(
+    point: [number, number, number],
+    pitch: number,
+    yaw: number
+): [number, number, number] {
+    const [x, y, z] = point
+
+    // —— 绕 Y 轴旋转 pitch ——
+    const cosP = Math.cos(pitch)
+    const sinP = Math.sin(pitch)
+    const x1 =  x * cosP + z * sinP
+    const z1 = -x * sinP + z * cosP
+    const y1 =  y
+
+    // —— 绕 Z 轴旋转 yaw ——
+    const cosY = Math.cos(yaw)
+    const sinY = Math.sin(yaw)
+    const x2 = x1 * cosY - y1 * sinY
+    const y2 = x1 * sinY + y1 * cosY
+    const z2 = z1
+
+    return [x2, y2, z2]
+}
 /**
  * 构建桥结构Line（简单的3D长方体）
  */
@@ -77,9 +101,15 @@ function buildBridgeLine(shape: LineShape) {
     if (Math.abs(yawAngle) > 1e-6) {
         box = rotate([0, 0, yawAngle], box)
     }
-
+    //计算start偏移量
+    const startDiffLocal: [number, number, number] = [0, 0, height / 2]
+    const [rotX, rotY, rotZ] = rotatePointByPitchThenYaw(
+        startDiffLocal,
+        pitchAngle,
+        yawAngle
+    )
     // 5. 平移到起点
-    return translate([start.x, start.y, start.z - height / 2], box)
+    return translate([start.x-rotX, start.y-rotY, start.z-rotZ], box)
 }
 
 export function buildLine(shape: LineShape) {
