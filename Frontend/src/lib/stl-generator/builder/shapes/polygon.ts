@@ -1,4 +1,4 @@
-// ✅ 修复方向的Polygon实现
+
 // src/lib/stl-generator/builder/shapes/polygon.ts
 
 import { fromPoints } from '@jscad/modeling/src/geometries/geom2'
@@ -122,12 +122,10 @@ function buildVerticalPolygon(shape: PolygonShape) {
     // 4. 检查和修正点的顺序
     if (shoelace(points2D) < 0) {
         points2D = points2D.reverse()
-        console.log('Reversed point order for correct winding')
     }
 
     // 5. 验证多边形有效性
     if (points2D.length < 3) {
-        console.error('Not enough points for polygon after projection:', points2D.length)
         return null as any
     }
 

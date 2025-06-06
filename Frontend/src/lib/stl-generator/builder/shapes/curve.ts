@@ -1,3 +1,4 @@
+
 // src/lib/stl-generator/builder/shapes/curve.ts
 
 import { fromPoints }   from '@jscad/modeling/src/geometries/geom2'
@@ -83,27 +84,29 @@ function buildFlatCurve(shape: CurveShape, precision: number): Geom3 {
 }
 
 /**
- * 构建桥结构Curve - 正确的垂直平面方法
+ * 构建桥结构Curve - 统一垂直平面方向
  */
 function buildBridgeCurve(shape: CurveShape, precision: number): Geom3 {
-    console.log('Building bridge curve - correct vertical plane approach')
+    console.log('Building bridge curve - unified vertical plane approach')
 
     const { start, end, center, tangent, width, height } = shape
 
-    // 1. 确定垂直平面
-    const pathDirX = end.x - start.x
-    const pathDirY = end.y - start.y
-    const pathLength = Math.sqrt(pathDirX * pathDirX + pathDirY * pathDirY)
-
-    if (pathLength < 1e-6) {
-        console.log('Path length too small')
+    // 1. 使用tangent向量确定统一的垂直平面方向（而不是start→end）
+    if (!tangent) {
+        console.error('Bridge curve requires tangent vector')
         return null as any
     }
 
-    // 2. 建立垂直平面的坐标系
-    // u轴：沿路径方向（标准化）
-    const uAxisX = pathDirX / pathLength
-    const uAxisY = pathDirY / pathLength
+    const tangentLength = Math.sqrt(tangent.x * tangent.x + tangent.y * tangent.y)
+    if (tangentLength < 1e-6) {
+        console.error('Tangent vector too small')
+        return null as any
+    }
+
+    // 2. 建立统一的垂直平面坐标系（基于tangent）
+    // u轴：沿tangent方向（标准化）
+    const uAxisX = tangent.x / tangentLength
+    const uAxisY = tangent.y / tangentLength
     const uAxisZ = 0
 
     // v轴：沿Z轴方向
@@ -114,7 +117,11 @@ function buildBridgeCurve(shape: CurveShape, precision: number): Geom3 {
     const wAxisY = uAxisZ * vAxisX - uAxisX * vAxisZ  // = -uAxisX
     const wAxisZ = uAxisX * vAxisY - uAxisY * vAxisX  // = 0
 
-    console.log('Coordinate system:', {
+    const X_bias= wAxisX * height/2 //-0.8944*200
+    const Y_bias= wAxisY * height/2 //-0.4472*200
+
+    console.log('Unified coordinate system (based on tangent):', {
+        tangent: `(${tangent.x.toFixed(3)}, ${tangent.y.toFixed(3)}, ${tangent.z})`,
         uAxis: `(${uAxisX.toFixed(3)}, ${uAxisY.toFixed(3)}, ${uAxisZ})`,
         vAxis: `(${vAxisX}, ${vAxisY}, ${vAxisZ})`,
         wAxis: `(${wAxisX.toFixed(3)}, ${wAxisY.toFixed(3)}, ${wAxisZ})`
@@ -201,14 +208,15 @@ function buildBridgeCurve(shape: CurveShape, precision: number): Geom3 {
     // 9.进行90°旋转
     solid = rotate([Math.PI/2, 0, 0], solid)
 
-    // 10. 旋转到正确的垂直平面方向
-    const planeAngle = Math.atan2(uAxisY, uAxisX)
+    // 10. 旋转到正确的垂直平面方向（基于tangent统一方向）
+    const planeAngle = Math.atan2(uAxisY, uAxisX)  // tangent的角度
     if (Math.abs(planeAngle) > 1e-6) {
         solid = rotate([0, 0, planeAngle], solid)
+        console.log('Applied unified plane rotation:', (planeAngle * 180 / Math.PI).toFixed(1) + '°')
     }
 
     // 11. 平移到起点位置
-    solid = translate([start.x, start.y, start.z], solid)
+    solid = translate([start.x- X_bias, start.y-Y_bias, start.z], solid)
 
     return solid
 }
