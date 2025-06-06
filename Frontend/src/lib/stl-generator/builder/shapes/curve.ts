@@ -180,7 +180,7 @@ function buildBridgeCurve(shape: CurveShape, precision: number): Geom3 {
 
     const outer: [number,number][] = []
     const inner: [number,number][] = []
-    const rOut = radius + height/2, rIn = radius - height/2  // 注意：这里height是通道高度
+    const rOut = radius + width/2, rIn = radius - width/2  // 注意：这里height是通道高度
 
     for (let i = 0; i <= N; i++) {
         const θ = ang0 + sweep * (i / N)
@@ -203,7 +203,7 @@ function buildBridgeCurve(shape: CurveShape, precision: number): Geom3 {
     const shape2d: Geom2 = fromPoints(pts2D)
 
     // 关键：沿w轴（法向量）拉伸，给通道宽度
-    let solid: Geom3 = extrudeLinear({ height: width }, shape2d)
+    let solid: Geom3 = extrudeLinear({ height: height }, shape2d)
 
     // 9.进行90°旋转
     solid = rotate([Math.PI/2, 0, 0], solid)
