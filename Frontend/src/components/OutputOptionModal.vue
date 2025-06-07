@@ -222,20 +222,43 @@ export default defineComponent({
     const showStlPreview = ref(false);
     const isBinary = ref(true);
 
-    const loadSTL = () => {
-      showStlPreview.value = true;
-      contentStore.requestNewStlData(
-        precisionValue[precisionIdx.value],
-        globalChecked.value,
-        globalCompensation.value,
-        localChecked.value,
-        localCompensationMin.value,
-        minAt.value,
-        localCompensationMax.value,
-        maxAt.value,
-        isBinary.value
+
+    // const loadSTL = () => {
+    //   showStlPreview.value = true;
+    //   contentStore.requestNewStlData(
+    //     precisionValue[precisionIdx.value],
+    //     globalChecked.value,
+    //     globalCompensation.value,
+    //     localChecked.value,
+    //     localCompensationMin.value,
+    //     minAt.value,
+    //     localCompensationMax.value,
+    //     maxAt.value,
+    //     isBinary.value
+    //   );
+    // };
+    const loadSTL = async () => {
+      // 先生成STL数据，等待完成
+      await contentStore.requestNewStlData(
+          precisionValue[precisionIdx.value],
+          globalChecked.value,
+          globalCompensation.value,
+          localChecked.value,
+          localCompensationMin.value,
+          minAt.value,
+          localCompensationMax.value,
+          maxAt.value,
+          isBinary.value
       );
+
+      // 确认生成成功后，再显示预览
+      // STLLoadingState.Succeed 的值是 2
+      if (contentStore.stlLoadingState === 2) {
+        showStlPreview.value = true;
+      }
     };
+
+
     const downloadSVGZip = () => {
       const zip = new JSZip();
       const color = "#0d6efd";

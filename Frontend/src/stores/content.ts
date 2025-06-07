@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import { useControlStore } from "./control";
+import { generateStlInBrowser } from '@/lib/stl-generator/index'
 import {
   ChannelSegment,
   ChannelPoint,
@@ -462,55 +463,53 @@ export const useContentStore = defineStore("content", {
     moduleTransform(translate: number[], rotation = 0, center = [0, 0]) {
       return `translate(${translate[0]} ${translate[1]}) rotate(${rotation} ${center[0]} ${center[1]})`;
     },
-    requestNewStlData(
-      precision: string,
-      globalCompCheck: boolean,
-      globalComp: number,
-      localCompCheck: boolean,
-      localCompMin: number,
-      minAt: number,
-      localCompMax: number,
-      maxAt: number,
-      binary: boolean
+    async requestNewStlData(
+        precision: string,
+        globalCompCheck: boolean,
+        globalComp: number,
+        localCompCheck: boolean,
+        localCompMin: number,
+        minAt: number,
+        localCompMax: number,
+        maxAt: number,
+        binary: boolean
     ) {
+      console.log('🚀 STL生成开始!')
       this.stlLoadingState = STLLoadingState.Loading;
-      const requestBody = buildRequestBody(
-        precision,
-        globalCompCheck,
-        globalComp,
-        localCompCheck,
-        localCompMin,
-        minAt,
-        localCompMax,
-        maxAt
-      );
-      const token = window.localStorage["jwtTokenFMT"];
-      const header = new Headers();
-      if (token) {
-        header.append("x-access-token", `${token}`);
+
+      try {
+        const chipJSONString = buildRequestBody(
+            precision,
+            globalCompCheck,
+            globalComp,
+            localCompCheck,
+            localCompMin,
+            minAt,
+            localCompMax,
+            maxAt
+        );
+
+        console.log('📋 JSON数据:', chipJSONString)
+        const chipJSON = JSON.parse(chipJSONString);
+
+        console.log('🏭 调用STL生成器...')
+        this.stlData = await generateStlInBrowser(chipJSON);
+
+        console.log('✅ 成功! 数据大小:', this.stlData.byteLength)
+        console.log('🔍 数据类型:', typeof this.stlData)
+        console.log('🔍 是否为ArrayBuffer:', this.stlData instanceof ArrayBuffer)
+
+        // 检查数据内容
+        const uint8Array = new Uint8Array(this.stlData)
+        console.log('📝 前20字节:', Array.from(uint8Array.slice(0, 20)))
+
+        this.stlLoadingState = STLLoadingState.Succeed;
+        console.log('🎯 最终状态:', this.stlLoadingState)
+
+      } catch (error) {
+        console.error('❌ 错误:', error)
+        this.stlLoadingState = STLLoadingState.Fail;
       }
-      header.append("Content-Type", "application/x-www-form-urlencoded");
-      fetch(postUrl, {
-        method: "POST",
-        headers: header,
-        body: `chip=${requestBody}&binary=${binary}`
-      })
-        .then((resp: Response) => {
-          if (resp.ok) {
-            return resp.arrayBuffer();
-          }
-          throw "request failed";
-        })
-        .then((data: ArrayBuffer) => {
-          this.stlData = data;
-          this.stlLoadingState = STLLoadingState.Succeed;
-          console.log("stl loaded");
-        })
-        .catch((e) => {
-          // display error msg
-          this.stlLoadingState = STLLoadingState.Fail;
-          console.log(e);
-        });
     },
     changeChipProperty(idx: number, val: number) {
       this.chipProperties[idx].value = +val;
