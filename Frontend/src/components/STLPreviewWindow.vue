@@ -232,80 +232,27 @@ export default defineComponent({
 
 
     const addMaterialAndRender = (geometry) => {
-      console.log("🎨 addMaterialAndRender开始");
-
-      // === 详细的几何体调试 ===
-      window.debugGeometry = geometry; // 保存到全局变量
-
-      console.log("📊 几何体原始信息:");
-      console.log("- 顶点总数:", geometry.attributes.position.count);
-      console.log("- 顶点数组长度:", geometry.attributes.position.array.length);
-      console.log("- 有法向量:", !!geometry.attributes.normal);
-
-      // 输出前30个坐标值（10个顶点）
-      const positions = geometry.attributes.position.array;
-      console.log("📍 前10个顶点坐标:");
-      for (let i = 0; i < Math.min(30, positions.length); i += 3) {
-        console.log(`  顶点${i/3}: (${positions[i].toFixed(2)}, ${positions[i+1].toFixed(2)}, ${positions[i+2].toFixed(2)})`);
-      }
-
-      // 计算和显示边界框
-      geometry.computeBoundingBox();
-      const box = geometry.boundingBox;
-      console.log("📦 边界框信息:", {
-        min: `(${box.min.x.toFixed(2)}, ${box.min.y.toFixed(2)}, ${box.min.z.toFixed(2)})`,
-        max: `(${box.max.x.toFixed(2)}, ${box.max.y.toFixed(2)}, ${box.max.z.toFixed(2)})`
-      });
-
-      // 计算尺寸和中心
-      const size = box.getSize(new THREE.Vector3());
-      const center = box.getCenter(new THREE.Vector3());
-      console.log("📐 几何体尺寸:", `${size.x.toFixed(2)} x ${size.y.toFixed(2)} x ${size.z.toFixed(2)}`);
-      console.log("📍 几何体中心:", `(${center.x.toFixed(2)}, ${center.y.toFixed(2)}, ${center.z.toFixed(2)})`);
-
-      // 检查几何体是否有效
-      if (positions.length === 0) {
-        console.error("❌ 几何体没有顶点数据!");
-        return;
-      }
-
-      if (positions.length % 3 !== 0) {
-        console.error("❌ 顶点数据不是3的倍数!");
-        return;
-      }
-
-      console.log("✅ 几何体数据验证通过");
-
-      // === 创建场景 ===
       const scene = new THREE.Scene();
-      console.log("✅ 场景创建完成");
 
-      // === 设置渲染器参数 ===
       let width = 1000, height = 720;
       let k = width / height;
 
-      // === 创建材质（红色不透明，便于观察） ===
+      // 创建材质
       let material1 = new THREE.MeshLambertMaterial({
-        color: 0xff0000,        // 红色
-        transparent: false,     // 不透明
-        opacity: 1.0,
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.5,
         side: THREE.DoubleSide
       });
 
-      // === 创建网格 ===
+      // 创建网格
       let mesh = new THREE.Mesh(geometry, material1);
-      console.log("✅ 网格创建完成");
-      console.log("🔍 网格位置:", mesh.position);
-      console.log("🔍 网格可见性:", mesh.visible);
-
       scene.add(mesh);
 
-      // === 添加光照 ===
-      // 环境光（确保物体能被看到）
+      // 添加光照
       const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
       scene.add(ambientLight);
 
-      // 点光源
       const light1 = new THREE.PointLight(0xffffff, 1.0);
       light1.position.set(-50000, 100000, 0);
       scene.add(light1);
@@ -314,86 +261,56 @@ export default defineComponent({
       light2.position.set(50000, -50000, 10000);
       scene.add(light2);
 
-      console.log("✅ 灯光添加完成");
+      // 设置相机（根据物体大小自动调整）
+      const camera = new THREE.PerspectiveCamera(55, k, 1, 200000);
 
-      // === 设置相机（根据物体大小自动调整） ===
-      const camera = new THREE.PerspectiveCamera(55, k, 1, 200000); // 增大远平面到20万
+      // 计算物体尺寸和中心
+      geometry.computeBoundingBox();
+      const box = geometry.boundingBox;
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
 
-      // 根据物体实际尺寸计算合适的相机位置
+      // 根据物体尺寸设置相机位置
       const maxDim = Math.max(size.x, size.y, size.z);
-      const distance = maxDim * 1.5; // 距离是物体最大尺寸的1.5倍
+      const distance = maxDim * 1.5;
 
-      // 设置相机位置：在物体的斜上方
       camera.position.set(distance, distance * 0.8, distance * 0.6);
-      camera.lookAt(center); // 让相机看向物体中心
+      camera.lookAt(center);
 
-      console.log("✅ 相机设置完成");
-      console.log("📷 物体最大尺寸:", maxDim.toFixed(2));
-      console.log("📷 相机距离:", distance.toFixed(2));
-      console.log("📷 相机位置:", camera.position);
-      console.log("👀 相机朝向:", center);
-
-      // === 创建渲染器 ===
+      // 创建渲染器
       const renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setSize(width, height);
-      renderer.setClearColor(0xdddddd, 1); // 浅灰色背景
-      console.log("✅ 渲染器创建完成");
+      renderer.setClearColor(0xdddddd, 1);
 
-      // === 添加到DOM ===
+      // 添加到DOM
       let container = document.getElementById("stl-preview");
-      console.log("📦 容器元素:", container);
-      console.log("📦 容器子元素数量:", container.childNodes.length);
-
       if (container.childNodes.length > 0) {
-        console.log("🔄 替换现有canvas");
         container.replaceChild(renderer.domElement, container.childNodes[0]);
       } else {
-        console.log("➕ 添加新canvas");
         container.append(renderer.domElement);
       }
 
-      console.log("📦 Canvas已添加到DOM");
-      console.log("🖼️ Canvas尺寸:", renderer.domElement.width, "x", renderer.domElement.height);
-
-      // === 首次渲染 ===
-      console.log("🎬 执行首次渲染...");
+      // 首次渲染
       renderer.render(scene, camera);
-      console.log("✅ 首次渲染完成");
 
-      // === 添加控制器（可以拖拽旋转） ===
+      // 添加控制器
       let controls = new OrbitControls(camera, renderer.domElement);
       controls.addEventListener("change", () => {
-        console.log("🔄 控制器触发重渲染");
         renderer.render(scene, camera);
       });
-      console.log("✅ 控制器设置完成");
     };
 
 
-
     const init = () => {
-      console.log("🎭 STLPreviewWindow开始初始化");
-
-      // 添加短暂延迟，确保数据完全稳定
       setTimeout(() => {
-        console.log("⏰ 延迟渲染开始");
-        console.log("📊 延迟后数据检查:", {
-          size: contentStore.stlData.byteLength,
-          state: contentStore.stlLoadingState
-        });
-
         try {
           const geometry = parseSTL(contentStore.stlData);
-          console.log("✅ 延迟parseSTL成功!", geometry.attributes.position?.count);
-
           geometry.center();
-          //geometry.scale(20, 20, 20);
           addMaterialAndRender(geometry);
-
         } catch (error) {
-          console.error("❌ 延迟渲染失败:", error);
+          console.error("STL渲染失败:", error);
         }
-      }, 1000); // 2000ms延迟
+      }, 100);
     };
 
     onMounted(init);

@@ -162,17 +162,9 @@ export async function generateStlInBrowser(chipJSON: ChipJSON): Promise<ArrayBuf
         }
     }
 
-    // // 关键：返回ArrayBuffer而不是写文件
-    // const rawData = serialize({ binary: false }, model)
-    // const stlContent = Array.isArray(rawData) ? rawData.join('') : rawData
-    // const encoder = new TextEncoder()
-    // return encoder.encode(stlContent).buffer
-
     // 简化的序列化部分：
     const rawData = serialize({ binary: false }, model) // 先用ASCII格式
     const stlContent = Array.isArray(rawData) ? rawData.join('') : String(rawData)
-
-    console.log('📦 STL内容前100字符:', stlContent.substring(0, 100))
 
     const encoder = new TextEncoder()
     return encoder.encode(stlContent).buffer

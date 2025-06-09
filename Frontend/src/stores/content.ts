@@ -474,7 +474,6 @@ export const useContentStore = defineStore("content", {
         maxAt: number,
         binary: boolean
     ) {
-      console.log('🚀 STL生成开始!')
       this.stlLoadingState = STLLoadingState.Loading;
 
       try {
@@ -489,25 +488,14 @@ export const useContentStore = defineStore("content", {
             maxAt
         );
 
-        console.log('📋 JSON数据:', chipJSONString)
         const chipJSON = JSON.parse(chipJSONString);
-
-        console.log('🏭 调用STL生成器...')
         this.stlData = await generateStlInBrowser(chipJSON);
-
-        console.log('✅ 成功! 数据大小:', this.stlData.byteLength)
-        console.log('🔍 数据类型:', typeof this.stlData)
-        console.log('🔍 是否为ArrayBuffer:', this.stlData instanceof ArrayBuffer)
 
         // 检查数据内容
         const uint8Array = new Uint8Array(this.stlData)
-        console.log('📝 前20字节:', Array.from(uint8Array.slice(0, 20)))
-
         this.stlLoadingState = STLLoadingState.Succeed;
-        console.log('🎯 最终状态:', this.stlLoadingState)
 
       } catch (error) {
-        console.error('❌ 错误:', error)
         this.stlLoadingState = STLLoadingState.Fail;
       }
     },
