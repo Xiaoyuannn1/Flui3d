@@ -69,6 +69,7 @@
                 >Exposure Penetration Compensation:</label
               >
 
+
               <div class="form-check form-switch">
                 <input
                   class="form-check-input"
@@ -180,6 +181,16 @@
                   </div>
                 </div>
               </div>
+              <div class="form-check form-switch">
+                <input
+                    class="form-check-input"
+                    type="checkbox"
+                    role="switch"
+                    id="aiEPC"
+                    v-model="aiChecked"
+                />
+                <label class="form-check-label" for="aiEPC">AI</label>
+              </div>
             </div>
             <hr />
             <div class="d-flex">
@@ -214,6 +225,7 @@ export default defineComponent({
     const precisionValue = ["Low", "Medium", "High"];
     const globalChecked = ref(false);
     const localChecked = ref(false);
+    const aiChecked = ref(false);
     const globalCompensation = ref(100);
     const localCompensationMin = ref(100);
     const localCompensationMax = ref(800);
@@ -295,6 +307,7 @@ export default defineComponent({
     return {
       globalChecked,
       localChecked,
+      aiChecked,
       globalCompensation,
       localCompensationMin,
       localCompensationMax,

@@ -113,7 +113,6 @@ export async function generateStlInBrowser(chipJSON: ChipJSON): Promise<ArrayBuf
         center: [chipSize.x/2, chipSize.y/2, chipSize.z/2]
     })
 
-    // 处理每个形状的函数（完全复制你现有的handleShape函数）
     const handleShape = (shape: Shape) => {
         let csg
 
@@ -145,6 +144,15 @@ export async function generateStlInBrowser(chipJSON: ChipJSON): Promise<ArrayBuf
 
     // 遍历所有层（完全复制你现有的循环）
     for (const layer of chipJSON.layers) {
+        if (layer.compensation) {
+            const compensationShape: PolygonShape = {
+                type: 'Polygon',
+                points: layer.compensation.points,
+                direction: layer.compensation.direction,
+                fill: layer.compensation.fill  // ⚠️ 使用JSON中的fill值，通常是false
+            }
+            handleShape(compensationShape)
+        }
         for (const comp of layer.components) {
             comp.shapes.forEach(handleShape)
             for (const chan of comp.channels) {

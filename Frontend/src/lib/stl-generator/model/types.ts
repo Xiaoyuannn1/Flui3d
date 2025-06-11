@@ -47,7 +47,9 @@ export interface ChamferShape {
 export type Shape = CircleShape | LineShape | PolygonShape | CurveShape | ChamferShape
 
 
-export interface Channel {shapes: Shape[] }
+export interface Channel {
+    shapes: Shape[]
+}
 
 export interface Component {
     id: string
@@ -55,10 +57,17 @@ export interface Component {
     channels: Channel[]
 }
 
+export interface CompensationPolygon {
+    type: 'Polygon'
+    points : Point3[]
+    direction: Point3
+    fill?: boolean
+}
 export interface Layer {
     elevation: number
     components: Component[]
     channels: Channel[]
+    compensation?: CompensationPolygon
 }
 
 export interface CrossLayerConnection {
