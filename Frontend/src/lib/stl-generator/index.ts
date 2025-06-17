@@ -149,7 +149,7 @@ export async function generateStlInBrowser(chipJSON: ChipJSON): Promise<ArrayBuf
                 type: 'Polygon',
                 points: layer.compensation.points,
                 direction: layer.compensation.direction,
-                fill: layer.compensation.fill  // ⚠️ 使用JSON中的fill值，通常是false
+                fill: layer.compensation.fill
             }
             handleShape(compensationShape)
         }

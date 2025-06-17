@@ -217,6 +217,9 @@ import { defineComponent, onMounted, ref } from "vue";
 import STLPreviewVue from "./STLPreview.vue";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
+import { SlicerService } from '@/services/slicerService'
+import { DownloadService } from '@/services/downloadService'
+
 export default defineComponent({
   components: { STLPreviewVue },
   setup() {
@@ -268,8 +271,50 @@ export default defineComponent({
       if (contentStore.stlLoadingState === 2) {
         showStlPreview.value = true;
       }
+      if (aiChecked.value) {
+        console.log(' Starting to slice...')
+        performSlicing().catch(error => {
+          alert('Slicing process wrong: ' + error.message)
+        })
+      }
     };
+// 新增：执行切片功能
+    const performSlicing = async () => {
+      try {
 
+
+        const stlData = contentStore.stlData
+        if (!stlData || stlData.byteLength === 0) {
+          throw new Error('empty STL data')
+        }
+
+
+        // 执行切片
+        const result = await SlicerService.generateSlices(
+            stlData,
+            100,    // Z步长
+            2560,   // 画布宽度
+            1620,   // 画布高度
+            10      // 缩放因子
+        )
+
+
+        // 生成文件名
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+        const zipFilename = `${contentStore.title}_slices_${timestamp}.zip`
+
+        // 下载ZIP文件
+        await DownloadService.downloadSlicesAsZip(
+            result.sliceImages,
+            result.sliceInfo,
+            zipFilename
+        )
+
+
+      } catch (error) {
+        alert('Slicing failed: ' + error.message)
+      }
+    }
 
     const downloadSVGZip = () => {
       const zip = new JSZip();
@@ -308,6 +353,7 @@ export default defineComponent({
       globalChecked,
       localChecked,
       aiChecked,
+      performSlicing,
       globalCompensation,
       localCompensationMin,
       localCompensationMax,
