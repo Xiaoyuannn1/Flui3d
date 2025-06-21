@@ -1,4 +1,3 @@
-
 import createSlicer from 'mesh-slice-polygon'
 
 export interface SliceResult {
@@ -9,18 +8,29 @@ export interface SliceResult {
     }[]
 }
 
+// 新增：AI增强的切片结果接口
+export interface AISliceResult extends SliceResult {
+    slice0Canvas?: HTMLCanvasElement    // 第一张切片的Canvas
+    slice100Canvas?: HTMLCanvasElement  // 第二张切片的Canvas（如果存在）
+}
+
 export class SlicerService {
+    // 新增：保存AI需要的切片Canvas
+    private static savedSlice0: HTMLCanvasElement | null = null
+    private static savedSlice100: HTMLCanvasElement | null = null
+
     /**
-     * 从STL ArrayBuffer生成切片图像
+     * 从STL ArrayBuffer生成切片图像（AI增强版）
      */
     static async generateSlices(
         stlData: ArrayBuffer,
-        zStep = 100,
+        zStep = 99.99,
         canvasWidth = 2560,
         canvasHeight = 1620,
         scaleFactor = 10
-    ): Promise<SliceResult> {
+    ): Promise<AISliceResult> {
 
+        console.log('[SlicerService] 🚀 开始生成切片（AI增强版）...')
 
         // 1. 解析STL数据
         const triangles = this.parseSTLBuffer(stlData)
@@ -46,7 +56,7 @@ export class SlicerService {
             })
         })
 
-        console.log('边界框:', { xMin, xMax, yMin, yMax, zMin, zMax })
+        console.log('[SlicerService] 📏 边界框:', { xMin, xMax, yMin, yMax, zMin, zMax })
 
         // 4. 计算布局参数
         const contentW = (xMax - xMin) / scaleFactor
@@ -54,11 +64,16 @@ export class SlicerService {
         const padX = (canvasWidth - contentW) / 2
         const padY = (canvasHeight - contentH) / 2
 
-        console.log('画布参数:', { contentW, contentH, padX, padY })
+        console.log('[SlicerService] 🎨 画布参数:', { contentW, contentH, padX, padY })
 
-        // 5. 生成切片
+        // 5. 生成切片（修改部分：保存特定切片）
         const sliceImages: Blob[] = []
         const sliceInfo: { zValue: number; filename: string }[] = []
+        let sliceIndex = 0  // 添加切片索引计数器
+
+        // 清空之前保存的切片
+        this.savedSlice0 = null
+        this.savedSlice100 = null
 
         for (let z = Math.ceil(zMin / zStep) * zStep; z <= zMax; z += zStep) {
 
@@ -94,28 +109,85 @@ export class SlicerService {
 
             ctx.fill('evenodd')
 
-            // 🔄 添加顺时针90度旋转
-            const tempCanvas = document.createElement('canvas')
-            tempCanvas.width = canvasHeight // 注意宽高交换
-            tempCanvas.height = canvasWidth
-            const tempCtx = tempCanvas.getContext('2d')!
+            // 🔥 新增：保存特定的切片Canvas
+            if (sliceIndex === 0) {
+                // 保存第一张切片（slice_0）
+                this.savedSlice0 = document.createElement('canvas')
+                this.savedSlice0.width = canvasWidth
+                this.savedSlice0.height = canvasHeight
+                const ctx0 = this.savedSlice0.getContext('2d')!
+                ctx0.drawImage(canvas, 0, 0)
+                console.log('[SlicerService] 💾 已保存 slice_0 用于AI处理')
+            } else if (sliceIndex === 1) {
+                // 保存第二张切片（slice_100）
+                this.savedSlice100 = document.createElement('canvas')
+                this.savedSlice100.width = canvasWidth
+                this.savedSlice100.height = canvasHeight
+                const ctx100 = this.savedSlice100.getContext('2d')!
+                ctx100.drawImage(canvas, 0, 0)
+                console.log('[SlicerService] 💾 已保存 slice_100 用于AI处理')
+            }
 
-            tempCtx.save()
-            tempCtx.translate(tempCanvas.width / 2, tempCanvas.height / 2)
-            tempCtx.rotate(Math.PI / 2) // 顺时针90度
-            tempCtx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2)
-            tempCtx.restore()
+            // 添加顺时针90度旋转（注释掉的代码保持原样）
+            // const tempCanvas = document.createElement('canvas')
+            // tempCanvas.width = canvasHeight // 注意宽高交换
+            // tempCanvas.height = canvasWidth
+            // const tempCtx = tempCanvas.getContext('2d')!
+            //
+            // tempCtx.save()
+            // tempCtx.translate(tempCanvas.width / 2, tempCanvas.height / 2)
+            // tempCtx.rotate(Math.PI / 2) // 顺时针90度
+            // tempCtx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2)
+            // tempCtx.restore()
 
             // 转换为Blob
-            const blob = await this.canvasToBlob(tempCanvas)
+            //const blob = await this.canvasToBlob(tempCanvas)
+            const blob = await this.canvasToBlob(canvas)
             sliceImages.push(blob)
 
             const filename = `slice_${z}.png`
             sliceInfo.push({ zValue: z, filename })
+
+            sliceIndex++  // 增加切片索引
         }
 
+        console.log(`[SlicerService] ✅ 切片生成完成，共 ${sliceImages.length} 张`)
+        console.log(`[SlicerService] 🤖 AI切片准备状态: slice_0=${this.savedSlice0 ? '✅' : '❌'}, slice_100=${this.savedSlice100 ? '✅' : '❌'}`)
 
-        return { sliceImages, sliceInfo }
+        // 返回增强结果
+        return {
+            sliceImages,
+            sliceInfo,
+            slice0Canvas: this.savedSlice0 || undefined,
+            slice100Canvas: this.savedSlice100 || undefined
+        }
+    }
+
+    /**
+     * 新增：获取保存的AI切片Canvas
+     * 这个方法让其他服务能够获取到保存的切片图像
+     */
+    static getSavedSlicesForAI(): { slice0?: HTMLCanvasElement, slice100?: HTMLCanvasElement } {
+        return {
+            slice0: this.savedSlice0 || undefined,
+            slice100: this.savedSlice100 || undefined
+        }
+    }
+
+    /**
+     * 新增：检查AI切片是否可用
+     */
+    static areAISlicesReady(): boolean {
+        return this.savedSlice0 !== null && this.savedSlice100 !== null
+    }
+
+    /**
+     * 新增：清理保存的切片（释放内存）
+     */
+    static clearSavedSlices(): void {
+        this.savedSlice0 = null
+        this.savedSlice100 = null
+        console.log('[SlicerService] 🧹 已清理保存的AI切片')
     }
 
     /**

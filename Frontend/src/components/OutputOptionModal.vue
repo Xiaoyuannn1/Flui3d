@@ -191,6 +191,35 @@
                 />
                 <label class="form-check-label" for="aiEPC">AI</label>
               </div>
+              <!-- 🔥 在这里添加AI状态显示区域 -->
+              <div v-if="aiChecked" class="mt-2 p-2 border rounded" style="background-color: #f8f9fa;">
+                <!-- AI模型状态 -->
+                <div class="d-flex align-items-center mb-1">
+                  <small class="text-muted">AI模型状态:</small>
+                  <span class="ms-2 badge" :class="aiModelLoaded ? 'bg-success' : 'bg-secondary'">
+      {{ aiModelLoaded ? '已加载' : '未加载' }}
+    </span>
+                </div>
+
+                <!-- AI处理进度 -->
+                <div v-if="aiProgress" class="mb-1">
+                  <small class="text-muted">{{ aiProgress.message }}</small>
+                  <div v-if="aiProgress.progress !== undefined" class="progress mt-1" style="height: 4px;">
+                    <div class="progress-bar" :style="`width: ${aiProgress.progress}%`"></div>
+                  </div>
+                </div>
+
+                <!-- AI错误信息 -->
+                <div v-if="aiError" class="alert alert-danger py-1 px-2 mb-1" style="font-size: 0.8em;">
+                  {{ aiError }}
+                </div>
+
+                <!-- AI处理状态 -->
+                <div v-if="aiProcessing" class="d-flex align-items-center">
+                  <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                  <small class="text-primary">AI正在处理中...</small>
+                </div>
+              </div>
             </div>
             <hr />
             <div class="d-flex">
@@ -211,14 +240,20 @@
     </div>
   </div>
 </template>
-<script>
+<script lang="ts">
 import { useContentStore } from "@/stores/content";
-import { defineComponent, onMounted, ref } from "vue";
+import { defineComponent, onMounted, ref, onUnmounted} from "vue";
 import STLPreviewVue from "./STLPreview.vue";
-import JSZip from "jszip";
-import { saveAs } from "file-saver";
+// import JSZip from "jszip";
+// import { saveAs } from "file-saver";
 import { SlicerService } from '@/services/slicerService'
 import { DownloadService } from '@/services/downloadService'
+import { AIPredictionService } from '@/services/aiPredictionService'
+interface AIPredictionProgress {
+  stage: 'loading' | 'processing' | 'predicting' | 'completed' | 'error'
+  message: string
+  progress?: number
+}
 
 export default defineComponent({
   components: { STLPreviewVue },
@@ -238,47 +273,145 @@ export default defineComponent({
     const isBinary = ref(true);
 
 
-    // const loadSTL = () => {
-    //   showStlPreview.value = true;
-    //   contentStore.requestNewStlData(
-    //     precisionValue[precisionIdx.value],
-    //     globalChecked.value,
-    //     globalCompensation.value,
-    //     localChecked.value,
-    //     localCompensationMin.value,
-    //     minAt.value,
-    //     localCompensationMax.value,
-    //     maxAt.value,
-    //     isBinary.value
-    //   );
-    // };
-    const loadSTL = async () => {
-      // 先生成STL数据，等待完成
-      await contentStore.requestNewStlData(
-          precisionValue[precisionIdx.value],
-          globalChecked.value,
-          globalCompensation.value,
-          localChecked.value,
-          localCompensationMin.value,
-          minAt.value,
-          localCompensationMax.value,
-          maxAt.value,
-          isBinary.value
-      );
+    //  新增：AI相关的响应式变量
+    const aiModelLoaded = ref(false);           // AI模型是否已加载
+    const aiProcessing = ref(false);            // AI是否正在处理
+    const aiProgress = ref<AIPredictionProgress | null>(null); // AI处理进度
+    const aiError = ref<string | null>(null);  // AI错误信息
 
-      // 确认生成成功后，再显示预览
-      // STLLoadingState.Succeed 的值是 2
-      if (contentStore.stlLoadingState === 2) {
-        showStlPreview.value = true;
+    // 在setup()函数内部添加
+    onUnmounted(() => {
+      // 清理AI资源
+      if (aiModelLoaded.value) {
+        AIPredictionService.cleanup()
+        console.log('[UI] 🧹 组件卸载，已清理AI资源')
       }
-      if (aiChecked.value) {
-        console.log(' Starting to slice...')
-        performSlicing().catch(error => {
-          alert('Slicing process wrong: ' + error.message)
+    })
+
+    const loadSTL = async () => {
+      try {
+        // 1. AI初始化（如果需要）
+        if (aiChecked.value) {
+          const aiInitSuccess = await initializeAIModel()
+          if (!aiInitSuccess) {
+            aiChecked.value = false
+          }
+        }
+
+        // 2. 生成STL
+        await contentStore.requestNewStlData(
+            precisionValue[precisionIdx.value],
+            globalChecked.value,
+            globalCompensation.value,
+            localChecked.value,
+            localCompensationMin.value,
+            minAt.value,
+            localCompensationMax.value,
+            maxAt.value,
+            isBinary.value
+        );
+
+        // 3. 检查STL生成成功
+        if (contentStore.stlLoadingState === 2) {
+          showStlPreview.value = true
+
+          // 4. 🔥 关键修正：如果勾选AI，主动执行切片操作
+          if (aiChecked.value && aiModelLoaded.value) {
+            console.log('[UI] 🔄 为AI预测执行切片操作...')
+
+            // 执行切片操作（这会自动保存slice_0和slice_100）
+            await SlicerService.generateSlices(
+                contentStore.stlData,
+                100,    // zStep
+                2560,   // canvasWidth
+                1620,   // canvasHeight
+                10      // scaleFactor
+            )
+
+            // 然后执行AI预测
+            setTimeout(async () => {
+              await performAIPrediction()
+            }, 100)
+          }
+        }
+
+      } catch (error: any) {
+        console.error('[UI] 流程失败:', error)
+        alert(`生成失败: ${error.message}`)
+      }
+    }
+
+    //  新增：AI模型初始化函数
+    const initializeAIModel = async () => {
+      if (aiModelLoaded.value) {
+        console.log('[UI] AI模型已加载，跳过初始化')
+        return true
+      }
+
+      try {
+        console.log('[UI] 🚀 开始初始化AI模型...')
+        aiError.value = null
+
+        await AIPredictionService.initialize((progress) => {
+          aiProgress.value = progress
+          console.log(`[UI] AI初始化进度: ${progress.message}`)
         })
+
+        aiModelLoaded.value = true
+        console.log('[UI] ✅ AI模型初始化成功!')
+        return true
+
+      } catch (error: any) {
+        console.error('[UI] ❌ AI模型初始化失败:', error)
+        aiError.value = `AI模型加载失败: ${error.message}`
+        aiModelLoaded.value = false
+        return false
       }
-    };
-// 新增：执行切片功能
+    }
+    //  新增：执行AI预测的函数
+    const performAIPrediction = async () => {
+      if (!aiChecked.value) {
+        console.log('[UI] AI未勾选，跳过预测')
+        return
+      }
+
+      try {
+        console.log('[UI] 🤖 开始执行AI预测...')
+        aiProcessing.value = true
+        aiError.value = null
+
+        // 检查切片是否准备好
+        if (!SlicerService.areAISlicesReady()) {
+          throw new Error('切片图像未准备好，请先生成STL')
+        }
+
+        // 执行AI预测
+        const predictions = await AIPredictionService.performPrediction((progress) => {
+          aiProgress.value = progress
+          console.log(`[UI] AI预测进度: ${progress.message}`)
+        })
+
+        console.log('[UI] 🎉 AI预测完成!')
+        console.log(`[UI] 📊 获得 ${predictions.length} 个预测结果`)
+
+        // 🎯 这里是您要求的功能：在控制台输出预测结果
+        console.log('[UI] 📋 AI预测结果汇总:')
+        predictions.forEach((result, index) => {
+          console.log(`[UI] ${index + 1}. Point(${result.x}, ${result.y}): Z_metric = ${result.prediction.toFixed(6)}`)
+        })
+
+      } catch (error: any) {
+        console.error('[UI] ❌ AI预测失败:', error)
+        aiError.value = `AI预测失败: ${error.message}`
+        alert(`AI预测失败: ${error.message}`)
+
+      } finally {
+        aiProcessing.value = false
+        aiProgress.value = null
+      }
+    }
+
+    // 新增：执行切片功能
     const performSlicing = async () => {
       try {
 
@@ -311,44 +444,48 @@ export default defineComponent({
         )
 
 
-      } catch (error) {
+      } catch (error:any) {
         alert('Slicing failed: ' + error.message)
       }
     }
-
-    const downloadSVGZip = () => {
-      const zip = new JSZip();
-      const color = "#0d6efd";
-      const svgTag = `<svg width="${contentStore.chipLengthX / 10}" height="${
-        contentStore.chipLengthY / 10
-      }" viewBox="-5 -5 ${contentStore.chipLengthX + 5} ${
-        contentStore.chipLengthY + 5
-      }" xmlns="http://www.w3.org/2000/svg" fill="${color}" stroke="${color}">`;
-
-      const chipBoundary = `<rect x="0" y="0" width="${contentStore.chipLengthX}" height="${contentStore.chipLengthY}" fill="none" stroke-width="10" stroke="black"/>`;
-      try {
-        const svgContent = document.getElementById("svgContent");
-        svgContent.childNodes.forEach((layerContent) => {
-          const layer = contentStore.layers.get(layerContent.id);
-          if (layer) {
-            const svgData = `${svgTag}${chipBoundary}${layerContent.innerHTML}</svg>`;
-            zip.file(`${layer.label}_${layer.height}.svg`, svgData);
-          }
-        });
-        zip.generateAsync({ type: "blob" }).then(function (content) {
-          saveAs(content, `${contentStore.title}_svg.zip`);
-        });
-      } catch (err) {
-        console.log(err);
-      }
-    };
+    //
+    // const downloadSVGZip = () => {
+    //   const zip = new JSZip();
+    //   const color = "#0d6efd";
+    //   const svgTag = `<svg width="${contentStore.chipLengthX / 10}" height="${
+    //     contentStore.chipLengthY / 10
+    //   }" viewBox="-5 -5 ${contentStore.chipLengthX + 5} ${
+    //     contentStore.chipLengthY + 5
+    //   }" xmlns="http://www.w3.org/2000/svg" fill="${color}" stroke="${color}">`;
+    //
+    //   const chipBoundary = `<rect x="0" y="0" width="${contentStore.chipLengthX}" height="${contentStore.chipLengthY}" fill="none" stroke-width="10" stroke="black"/>`;
+    //   try {
+    //     const svgContent = document.getElementById("svgContent");
+    //     svgContent.childNodes.forEach((layerContent) => {
+    //       const layer = contentStore.layers.get(layerContent.id);
+    //       if (layer) {
+    //         const svgData = `${svgTag}${chipBoundary}${layerContent.innerHTML}</svg>`;
+    //         zip.file(`${layer.label}_${layer.height}.svg`, svgData);
+    //       }
+    //     })
+    //     ;
+    //     zip.generateAsync({ type: "blob" }).then(function (content) {
+    //       saveAs(content, `${contentStore.title}_svg.zip`);
+    //     });
+    //   } catch (err) {
+    //     console.log(err);
+    //   }
+    // };
 
     onMounted(() => {
       const myModalEl = document.getElementById("outputOptionModal");
-      myModalEl.addEventListener("hidden.bs.modal", () => {
-        showStlPreview.value = false;
-      });
+      if (myModalEl) {  // 添加null检查
+        myModalEl.addEventListener("hidden.bs.modal", () => {
+          showStlPreview.value = false;
+        });
+      }
     });
+
     return {
       globalChecked,
       localChecked,
@@ -364,7 +501,13 @@ export default defineComponent({
       isBinary,
       precisionIdx,
       precisionValue,
-      downloadSVGZip
+      //downloadSVGZip,
+      aiModelLoaded,
+      aiProcessing,
+      aiProgress,
+      aiError,
+      initializeAIModel,
+      performAIPrediction
     };
   }
 });
