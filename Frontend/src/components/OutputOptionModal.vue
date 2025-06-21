@@ -234,6 +234,14 @@
                 Generate
               </button>
             </div>
+            <button
+                type="button"
+                class="btn btn-warning me-2"
+                @click="testWebGL"
+                style="font-size: 12px; padding: 4px 8px;"
+            >
+              测试WebGL
+            </button>
           </form>
         </div>
       </div>
@@ -254,6 +262,7 @@ interface AIPredictionProgress {
   message: string
   progress?: number
 }
+import { runWebGLTest } from '@/services/webglTest'
 
 export default defineComponent({
   components: { STLPreviewVue },
@@ -486,6 +495,17 @@ export default defineComponent({
       }
     });
 
+    const testWebGL = async () => {
+      console.log('🚀 开始WebGL兼容性测试...')
+      console.log('请查看控制台输出，测试大约需要10-15秒')
+      try {
+        await runWebGLTest()
+        console.log('✅ WebGL测试完成！请查看上面的详细结果')
+      } catch (error) {
+        console.error('❌ WebGL测试失败:', error)
+      }
+    }
+
     return {
       globalChecked,
       localChecked,
@@ -507,7 +527,8 @@ export default defineComponent({
       aiProgress,
       aiError,
       initializeAIModel,
-      performAIPrediction
+      performAIPrediction,
+      testWebGL
     };
   }
 });

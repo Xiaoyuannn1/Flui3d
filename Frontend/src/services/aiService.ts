@@ -1,5 +1,6 @@
 import * as ort from 'onnxruntime-web'
 
+
 export interface PredictionResult {
     x: number           // 采样点的X坐标
     y: number           // 采样点的Y坐标
@@ -16,43 +17,60 @@ export class AIService {
      * 2. 从public/models/目录加载ONNX模型
      * 3. 配置执行提供程序（GPU优先，CPU备用）
      */
+
     async loadModel(): Promise<void> {
+        console.log('[AI] 🚀 开始加载ONNX模型...')
+
+        // 设置 WASM 资源路径（CPU 后端用）
+        ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/'
+
+        let providerUsed = ''
+
         try {
-            console.log('[AI] 🚀 开始加载ONNX模型...')
-
-            ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/'
-
-            this.session = await ort.InferenceSession.create('/models/compensation_model.onnx', {
-                executionProviders: [ 'wasm']
-            })
-
-            this.isModelLoaded = true
-            console.log('[AI] ✅ ONNX模型加载成功!')
-
-            // 🔥 重要：详细打印模型的输入输出信息
-            console.log('[AI] 📥 输入信息详情:')
-            this.session.inputNames.forEach((name, index) => {
-                console.log(`  输入${index}: 名称="${name}"`)
-            })
-
-            console.log('[AI] 📤 输出信息详情:')
-            this.session.outputNames.forEach((name, index) => {
-                console.log(`  输出${index}: 名称="${name}"`)
-            })
-
-            // 🔥 1.14.0版本获取输入输出信息的正确方法
-            console.log('[AI] 🎯 完整的session信息:')
-            console.log('所有输入名称:', this.session.inputNames)
-            console.log('所有输出名称:', this.session.outputNames)
-
-            // 尝试用第一个样本数据测试模型接受的输入格式
-            console.log('[AI] 🧪 准备测试模型输入格式...')
-
-        } catch (error: any) {
-            console.error('[AI] ❌ 模型加载失败:', error)
-            throw new Error(`AI模型加载失败: ${error.message}`)
+            // 先尝试只用 WebGL
+            console.log('[AI] 🔧 尝试 WebGL 后端加载（GPU 优先）...')
+            this.session = await ort.InferenceSession.create(
+                '/models/compensation_model_no_bn_fixed.onnx',
+                { executionProviders: ['webgl'] }
+            )
+            providerUsed = 'webgl'
+            console.log('[AI] ✅ WebGL 后端加载成功，使用 GPU 加速！')
+        } catch (webglErr: any) {
+            console.warn('[AI] ⚠️ WebGL 后端初始化失败，准备回退到 WASM（CPU）...', webglErr.message)
+            // 回退到只用 WASM
+            this.session = await ort.InferenceSession.create(
+                '/models/compensation_model_no_bn_fixed.onnx',
+                { executionProviders: ['wasm'] }
+            )
+            providerUsed = 'wasm'
+            console.log('[AI] ✅ WASM 后端加载成功，使用 CPU 运行')
         }
+
+        this.isModelLoaded = true
+
+        // 打印实际使用的后端
+        console.log('[AI] 🎯 实际使用后端：', providerUsed)
+
+        // 🔥 重要：详细打印模型的输入输出信息
+        console.log('[AI] 📥 输入信息详情:')
+        this.session.inputNames.forEach((name, index) => {
+            console.log(`  输入${index}: 名称="${name}"`)
+        })
+
+        console.log('[AI] 📤 输出信息详情:')
+        this.session.outputNames.forEach((name, index) => {
+            console.log(`  输出${index}: 名称="${name}"`)
+        })
+
+        // 🔥 1.14.0版本获取输入输出信息的正确方法
+        console.log('[AI] 🎯 完整的session信息:')
+        console.log('所有输入名称:', this.session.inputNames)
+        console.log('所有输出名称:', this.session.outputNames)
+
+        // 尝试用第一个样本数据测试模型接受的输入格式
+        console.log('[AI] 🧪 准备测试模型输入格式...')
     }
+
 
     /**
      * 这个函数在干什么：
