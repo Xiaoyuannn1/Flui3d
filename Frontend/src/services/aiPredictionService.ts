@@ -1,6 +1,7 @@
 import { aiService, PredictionResult } from './aiService'
 import { ImageProcessor } from './imageProcessor'
 import { SlicerService } from './slicerService'
+import { EdgeDetectionService, EdgeDetectionResult } from './edgeDetectionService'
 
 export interface AIPredictionProgress {
     stage: 'loading' | 'processing' | 'predicting' | 'completed' | 'error'
@@ -99,6 +100,23 @@ export class AIPredictionService {
 
             // 3. 获取可用的切片和采样点
             const availableElevations = SlicerService.getAvailableElevations()
+
+            // !!边缘检测
+            console.log(`[AI] 🔍 开始边缘检测 ${elevations.length} 个elevation...`)
+            const edgeResults: EdgeDetectionResult[] = []
+
+            for (const elevation of elevations) {
+                const canvas = SlicerService.getSlice(elevation)
+                if (canvas) {
+                    try {
+                        const result = EdgeDetectionService.detectEdges(canvas, elevation)
+                        edgeResults.push(result)
+                    } catch (error) {
+                        console.error(`[EdgeDetection] Elevation ${elevation} 检测失败:`, error)
+                    }
+                }
+            }
+
             // 获取第一个可用切片的画布尺寸
             const firstElevation = availableElevations[0]
             const firstCanvas = SlicerService.getSlice(firstElevation)
@@ -116,6 +134,7 @@ export class AIPredictionService {
                 message: `开始AI预测...`,
                 progress: 30
             })
+
 
             const allResults: PredictionResult[] = []
             let completedCount = 0
@@ -156,9 +175,22 @@ export class AIPredictionService {
                             prediction: prediction
                         })
 
-                        // 8. 输出预测结果到控制台
-                        console.log(`[AI] Elevation ${elevation} Point (${point.x.toString().padStart(4)}, ${point.y.toString().padStart(4)}): Z_metric_pred = ${prediction.toFixed(6)}`)
+                        // !!增强输出：显示点是否在检测到的形状内
+                        const edgeResult = edgeResults.find(r => r.elevation === elevation)
+                        let shapeInfo = ''
 
+                        if (edgeResult) {
+                            for (let i = 0; i < edgeResult.shapes.length; i++) {
+                                if (EdgeDetectionService.isPointInShape(point.x, point.y, edgeResult.shapes[i])) {
+                                    shapeInfo = ` [在形状${i}内]`
+                                    break
+                                }
+                            }
+                        }
+
+
+                        // 8. 输出预测结果到控制台
+                        console.log(`[AI] Elevation ${elevation} Point (${point.x.toString().padStart(4)}, ${point.y.toString().padStart(4)}): Z_metric_pred = ${prediction.toFixed(6)}${shapeInfo}`)
                     } catch (error) {
                         console.error(`[AI] 预测失败 elevation=${elevation}, point=(${point.x}, ${point.y}):`, error)
                         // 预测失败时记录0值
@@ -183,10 +215,12 @@ export class AIPredictionService {
                 }
             }
 
-            // 10. 输出完成统计
-            // console.log(`[AI] 🎉 AI预测完成!`)
-            // console.log(`[AI] 📊 总结果: ${allResults.length}个预测值`)
-            // console.log(`[AI] 📋 成功率: ${allResults.filter(r => r.prediction !== 0.0).length}/${allResults.length}`)
+            // 输出边缘检测汇总
+            console.log(`[EdgeDetection] 🎯 边缘检测汇总:`)
+            edgeResults.forEach(result => {
+                const totalArea = result.shapes.reduce((sum, s) => sum + s.area, 0)
+                console.log(`[EdgeDetection] Elevation ${result.elevation}: ${result.totalShapes} 个形状，总面积 ${totalArea.toFixed(0)} 像素²`)
+            })
 
             progressCallback?.({
                 stage: 'completed',
