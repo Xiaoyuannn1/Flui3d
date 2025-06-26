@@ -1,3 +1,4 @@
+//src/lib/stl-generator/builder/boolean.ts
 import { union, subtract } from '@jscad/modeling/src/operations/booleans/index'
 
 export function merge(base: any, part: any, doSubtract: boolean) {

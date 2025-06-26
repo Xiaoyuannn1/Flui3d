@@ -1,3 +1,4 @@
+// src/lib/stl-generator/builder/shapes/circle.ts
 import { translate } from '@jscad/modeling/src/operations/transforms/index'
 import { cylinder }  from '@jscad/modeling/src/primitives/index'
 import { CircleShape } from '../../model/types'

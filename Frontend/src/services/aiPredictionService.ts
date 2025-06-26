@@ -19,7 +19,7 @@ export class AIPredictionService {
      */
     static async initialize(progressCallback?: (progress: AIPredictionProgress) => void): Promise<void> {
         if (this.isInitialized) {
-            console.log('[AIPrediction] ✅ AI服务已初始化')
+            //console.log('[AIPrediction] ✅ AI服务已初始化')
             return
         }
 
@@ -30,7 +30,7 @@ export class AIPredictionService {
                 progress: 0
             })
 
-            console.log('[AIPrediction] 🚀 开始初始化AI预测服务...')
+            //console.log('[AIPrediction] 🚀 开始初始化AI预测服务...')
 
             // 加载ONNX模型
             await aiService.loadModel()
@@ -43,11 +43,11 @@ export class AIPredictionService {
                 progress: 100
             })
 
-            console.log('[AIPrediction] ✅ AI预测服务初始化完成')
+            //console.log('[AIPrediction] ✅ AI预测服务初始化完成')
 
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error)
-            console.error('[AIPrediction] ❌ AI服务初始化失败:', error)
+            //console.error('[AIPrediction] ❌ AI服务初始化失败:', error)
 
             progressCallback?.({
                 stage: 'error',
@@ -66,141 +66,132 @@ export class AIPredictionService {
      * 3. 执行AI预测
      * 4. 输出结果到控制台
      */
-    static async performPrediction(progressCallback?: (progress: AIPredictionProgress) => void): Promise<PredictionResult[]> {
+    /**
+     * 执行AI预测（支持JSON elevation）
+     */
+    static async performPrediction(
+        progressCallback?: (progress: AIPredictionProgress) => void,
+        chipJSON?: any  // 新增：接收JSON数据
+    ): Promise<PredictionResult[]> {
 
-        // 1. 检查AI服务是否就绪
+        // 1. 检查AI服务状态
         if (!this.isInitialized || !aiService.isReady()) {
             throw new Error('AI服务未初始化，请先调用initialize()')
-        }
-
-        // 2. 检查切片图像是否可用
-        if (!SlicerService.areAISlicesReady()) {
-            throw new Error('切片图像未准备好，请先生成STL切片')
         }
 
         try {
             progressCallback?.({
                 stage: 'processing',
-                message: '正在处理切片图像...',
+                message: '正在解析JSON数据...',
                 progress: 10
             })
 
-            // 3. 获取保存的切片图像
-            const savedSlices = SlicerService.getSavedSlicesForAI()
-            const slice0Canvas = savedSlices.slice0!
-            const slice100Canvas = savedSlices.slice100!
-
-            console.log('[AIPrediction] 📸 获取切片图像:')
-            console.log(`  - slice_0: ${slice0Canvas.width}x${slice0Canvas.height}`)
-            console.log(`  - slice_100: ${slice100Canvas.width}x${slice100Canvas.height}`)
-
-            progressCallback?.({
-                stage: 'processing',
-                message: '正在提取图像patches...',
-                progress: 20
-            })
-
-            // 4. 从两张图像中提取所有的小块
-            console.log('[AIPrediction] ✂️  开始提取图像patches...')
-            const slice0Patches = ImageProcessor.extractAllPatches(slice0Canvas)
-            const slice100Patches = ImageProcessor.extractAllPatches(slice100Canvas)
-
-            if (slice0Patches.length !== slice100Patches.length) {
-                throw new Error(`patches数量不匹配: slice0=${slice0Patches.length}, slice100=${slice100Patches.length}`)
+            // 2. 解析JSON获取所有elevation
+            let elevations: number[] = []
+            if (chipJSON && chipJSON.layers && Array.isArray(chipJSON.layers)) {
+                elevations = chipJSON.layers.map((layer: any) => layer.elevation)
+                console.log(`[AI] 从JSON解析到${elevations.length}个层级:`, elevations)
+            } else {
+                // 如果没有JSON，回退到默认值
+                elevations = [0, 100]
+                console.log(`[AI] 未提供有效JSON，使用默认elevations:`, elevations)
             }
 
-            const totalPatches = slice0Patches.length
-            console.log(`[AIPrediction] 🧩 成功提取 ${totalPatches} 对图像patches`)
+            // 3. 获取可用的切片和采样点
+            const availableElevations = SlicerService.getAvailableElevations()
+            const samplingPoints = ImageProcessor.generateSamplingPoints()  // 60个点
+
+            //console.log(`[AI] 可用切片:`, availableElevations)
+            //console.log(`[AI] 预测任务: ${elevations.length}层 × ${samplingPoints.length}点 = ${elevations.length * samplingPoints.length}次`)
 
             progressCallback?.({
                 stage: 'predicting',
-                message: `正在AI预测... (0/${totalPatches})`,
+                message: `开始AI预测...`,
                 progress: 30
             })
 
-            // 5. 准备批量预测数据
-            const imagePairs = []
-            for (let i = 0; i < totalPatches; i++) {
-                imagePairs.push({
-                    fused: slice100Patches[i].data,    // slice_100作为fused_image
-                    extra: slice0Patches[i].data,      // slice_0作为extra_image
-                    x: slice0Patches[i].x,
-                    y: slice0Patches[i].y
-                })
-            }
+            const allResults: PredictionResult[] = []
+            let completedCount = 0
+            const totalPredictions = elevations.length * samplingPoints.length
 
-            // 6. 执行AI批量预测
-            console.log('[AIPrediction] 🤖 开始AI批量预测...')
-            console.log('[AIPrediction] 📊 预测详情:')
+            // 4. 双重循环：为每个elevation的每个采样点进行预测
+            for (let elevationIndex = 0; elevationIndex < elevations.length; elevationIndex++) {
+                const elevation = elevations[elevationIndex]
+                //console.log(`[AI] 🎯 处理第${elevationIndex + 1}/${elevations.length}层: elevation=${elevation}`)
 
-            const results: PredictionResult[] = []
+                for (let pointIndex = 0; pointIndex < samplingPoints.length; pointIndex++) {
+                    const point = samplingPoints[pointIndex]
 
-            for (let i = 0; i < imagePairs.length; i++) {
-                const pair = imagePairs[i]
+                    try {
+                        // 5. 为当前elevation和采样点生成融合图像
+                        const imagePair = ImageProcessor.generateImagePairForPoint(
+                            elevation,
+                            point,
+                            availableElevations
+                        )
 
-                try {
-                    // 执行单次预测
-                    const prediction = await aiService.predictSingle(pair.fused, pair.extra)
+                        if (!imagePair) {
+                            console.warn(`[AI] 跳过 elevation=${elevation}, point=(${point.x}, ${point.y})`)
+                            completedCount++
+                            continue
+                        }
 
-                    // 保存结果
-                    results.push({
-                        x: pair.x,
-                        y: pair.y,
-                        prediction: prediction
-                    })
+                        // 6. 执行AI预测
+                        const prediction = await aiService.predictSingle(
+                            imagePair.fusedImage,   // fused_image（8张图融合）
+                            imagePair.extraImage    // extra_image（2张图平均）
+                        )
 
-                    // 🎯 在控制台输出每个点的预测结果（这是您要求的功能）
-                    console.log(`[AI] Point (${pair.x.toString().padStart(4)}, ${pair.y.toString().padStart(4)}): Z_metric_pred = ${prediction.toFixed(6)}`)
+                        // 7. 保存结果
+                        allResults.push({
+                            x: point.x,
+                            y: point.y,
+                            prediction: prediction
+                        })
 
-                    // 更新进度
-                    const progress = 30 + (i + 1) / imagePairs.length * 60  // 30% 到 90%
-                    progressCallback?.({
-                        stage: 'predicting',
-                        message: `正在AI预测... (${i + 1}/${totalPatches})`,
-                        progress: Math.round(progress)
-                    })
+                        // 8. 输出预测结果到控制台
+                        console.log(`[AI] Elevation ${elevation} Point (${point.x.toString().padStart(4)}, ${point.y.toString().padStart(4)}): Z_metric_pred = ${prediction.toFixed(6)}`)
 
-                } catch (error) {
-                    console.error(`[AIPrediction] ❌ 预测失败 - 位置(${pair.x}, ${pair.y}):`, error)
-                    // 预测失败时使用默认值
-                    results.push({
-                        x: pair.x,
-                        y: pair.y,
-                        prediction: 0.0
-                    })
+                    } catch (error) {
+                        console.error(`[AI] 预测失败 elevation=${elevation}, point=(${point.x}, ${point.y}):`, error)
+                        // 预测失败时记录0值
+                        allResults.push({
+                            x: point.x,
+                            y: point.y,
+                            prediction: 0.0
+                        })
+                    }
+
+                    completedCount++
+
+                    // 9. 更新进度（每10次更新一次）
+                    if (completedCount % 10 === 0) {
+                        const progress = 30 + (completedCount / totalPredictions) * 60
+                        progressCallback?.({
+                            stage: 'predicting',
+                            message: `AI预测中... (${completedCount}/${totalPredictions})`,
+                            progress: Math.round(progress)
+                        })
+                    }
                 }
             }
 
-            // 7. 输出总结
-            const successCount = results.filter(r => r.prediction !== 0.0).length
-            console.log('[AIPrediction] 🎉 AI预测完成!')
-            console.log(`[AIPrediction] 📈 成功预测: ${successCount}/${totalPatches} 个样本`)
-            console.log('[AIPrediction] 📋 预测结果汇总:')
-
-            // 计算统计信息
-            const predictions = results.map(r => r.prediction).filter(p => p !== 0.0)
-            if (predictions.length > 0) {
-                const mean = predictions.reduce((a, b) => a + b, 0) / predictions.length
-                const min = Math.min(...predictions)
-                const max = Math.max(...predictions)
-
-                console.log(`  - 平均预测值: ${mean.toFixed(6)}`)
-                console.log(`  - 最小预测值: ${min.toFixed(6)}`)
-                console.log(`  - 最大预测值: ${max.toFixed(6)}`)
-                console.log(`  - 预测范围: [${min.toFixed(6)}, ${max.toFixed(6)}]`)
-            }
+            // 10. 输出完成统计
+            // console.log(`[AI] 🎉 AI预测完成!`)
+            // console.log(`[AI] 📊 总结果: ${allResults.length}个预测值`)
+            // console.log(`[AI] 📋 成功率: ${allResults.filter(r => r.prediction !== 0.0).length}/${allResults.length}`)
 
             progressCallback?.({
                 stage: 'completed',
-                message: `AI预测完成！成功预测 ${successCount}/${totalPatches} 个样本`,
+                message: `AI预测完成！共${allResults.length}个结果`,
                 progress: 100
             })
 
-            return results
+            return allResults
 
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error)
-            console.error('[AIPrediction] ❌ AI预测流程失败:', error)
+            console.error('[AI] 预测流程失败:', error)
 
             progressCallback?.({
                 stage: 'error',
@@ -210,13 +201,12 @@ export class AIPredictionService {
             throw error
         }
     }
-
     /**
      * 清理资源
      */
     static cleanup(): void {
         SlicerService.clearSavedSlices()
-        console.log('[AIPrediction] 🧹 已清理AI预测资源')
+       // console.log('[AIPrediction] 🧹 已清理AI预测资源')
     }
 
     /**

@@ -1,3 +1,7 @@
+
+import {SlicerService} from "@/services/slicerService"
+
+
 export interface SamplingPoint {
     x: number  // 采样中心点X坐标
     y: number  // 采样中心点Y坐标
@@ -27,8 +31,8 @@ export class ImageProcessor {
             }
         }
 
-        console.log(`[ImageProcessor] 📍 生成 ${points.length} 个采样点`)
-        console.log(`[ImageProcessor] 🎯 采样范围: X=[128-${points[points.length-1].x}], Y=[128-${points[points.length-1].y}]`)
+        // console.log(`[ImageProcessor] 📍 生成 ${points.length} 个采样点`)
+        // console.log(`[ImageProcessor] 🎯 采样范围: X=[128-${points[points.length-1].x}], Y=[128-${points[points.length-1].y}]`)
 
         return points
     }
@@ -102,7 +106,7 @@ export class ImageProcessor {
         const samplingPoints = this.generateSamplingPoints()
         const patches: ImagePatch[] = []
 
-        console.log(`[ImageProcessor] ✂️  开始从图像中提取 ${samplingPoints.length} 个patch...`)
+        //console.log(`[ImageProcessor] ✂️  开始从图像中提取 ${samplingPoints.length} 个patch...`)
 
         for (const point of samplingPoints) {
             const patchData = this.extractPatch(canvas, point.x, point.y)
@@ -113,7 +117,7 @@ export class ImageProcessor {
             })
         }
 
-        console.log(`[ImageProcessor] ✅ 成功提取 ${patches.length} 个 256x256 patch`)
+        //console.log(`[ImageProcessor] ✅ 成功提取 ${patches.length} 个 256x256 patch`)
         return patches
     }
 
@@ -132,11 +136,210 @@ export class ImageProcessor {
                 const ctx = canvas.getContext('2d')!
                 ctx.drawImage(img, 0, 0)
 
-                console.log(`[ImageProcessor] 🖼️  图像转换为Canvas: ${canvas.width}x${canvas.height}`)
+                //console.log(`[ImageProcessor] 🖼️  图像转换为Canvas: ${canvas.width}x${canvas.height}`)
                 resolve(canvas)
             }
             img.onerror = reject
             img.src = URL.createObjectURL(blob)
         })
+    }
+
+    /**
+     * 将Float32Array图像数据转换为可下载的PNG文件
+     */
+    static downloadPatchAsImage(
+        imageData: Float32Array,
+        filename: string,
+        width = 256,
+        height = 256
+    ): void {
+        // 创建Canvas
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')!
+
+        // 创建ImageData
+        const imgData = ctx.createImageData(width, height)
+        const pixels = imgData.data
+
+        // 将Float32Array [0,1] 转换为 RGBA [0,255]
+        for (let i = 0; i < imageData.length; i++) {
+            const pixelIndex = i * 4
+            const grayValue = Math.round(imageData[i] * 255) // [0,1] → [0,255]
+
+            pixels[pixelIndex] = grayValue     // R
+            pixels[pixelIndex + 1] = grayValue // G
+            pixels[pixelIndex + 2] = grayValue // B
+            pixels[pixelIndex + 3] = 255       // A (不透明)
+        }
+
+        // 绘制到Canvas
+        ctx.putImageData(imgData, 0, 0)
+
+        // 转换为Blob并下载
+        canvas.toBlob((blob) => {
+            if (blob) {
+                const url = URL.createObjectURL(blob)
+                const link = document.createElement('a')
+                link.href = url
+                link.download = filename
+                link.style.display = 'none'
+
+                // 触发下载
+                document.body.appendChild(link)
+                link.click()
+                document.body.removeChild(link)
+
+                // 清理URL
+                URL.revokeObjectURL(url)
+
+                //console.log(`[ImageProcessor] 📥 已下载图像: ${filename}`)
+            }
+        }, 'image/png')
+    }
+
+    /**
+     * 下载第一个采样点的图像对
+     */
+    static downloadFirstSampleImages(
+        slice0Patches: ImagePatch[],
+        slice100Patches: ImagePatch[]
+    ): void {
+        if (slice0Patches.length === 0 || slice100Patches.length === 0) {
+            //console.warn('[ImageProcessor] ⚠️ 没有可下载的图像patch')
+            return
+        }
+
+        // 获取第一个采样点的数据
+        const firstSlice0 = slice0Patches[5]
+        const firstSlice100 = slice100Patches[5]
+
+        //console.log(`[ImageProcessor] 📥 下载第一个采样点图像: (${firstSlice0.x}, ${firstSlice0.y})`)
+
+        // 生成带时间戳的文件名
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+
+        // 下载两张图像
+        this.downloadPatchAsImage(
+            firstSlice0.data,
+            `slice_0_patch_${firstSlice0.x}_${firstSlice0.y}_${timestamp}.png`
+        )
+
+        this.downloadPatchAsImage(
+            firstSlice100.data,
+            `slice_100_patch_${firstSlice100.x}_${firstSlice100.y}_${timestamp}.png`
+        )
+
+        //console.log('[ImageProcessor] ✅ 第一个采样点的两张图像下载完成')
+    }
+    /**
+     * 简单平均融合多个图像patch
+     * 用途：生成extra_image（向上取2张图简单平均）
+     */
+    static mergePatches(patches: Float32Array[]): Float32Array {
+        if (patches.length === 0) return new Float32Array(256 * 256)  // 返回全黑图
+        const result = new Float32Array(256 * 256)
+
+        // 对每个像素位置求平均
+        for (let i = 0; i < result.length; i++) {
+            let sum = 0
+            for (const patch of patches) {
+                sum += patch[i]  // 累加所有图像在位置i的像素值
+            }
+            result[i] = sum / patches.length  // 求平均
+        }
+
+        return result
+    }
+
+    /**
+     * Beer-Lambert指数衰减融合
+     * 用途：生成fused_image（向下取8张图，越近权重越大）
+     */
+    static mergePatchesBeerLambert(patches: Float32Array[], alpha = 0.27): Float32Array {
+        if (patches.length === 0) return new Float32Array(256 * 256)
+
+        // 计算指数衰减权重：第0张权重最大，第7张最小
+        const weights = patches.map((_, i) => Math.exp(-alpha * i))
+        const weightSum = weights.reduce((a, b) => a + b, 0)
+
+        const result = new Float32Array(256 * 256)
+
+        // 加权平均：每个像素 = sum(图像i的像素值 × 权重i) / 权重总和
+        for (let i = 0; i < result.length; i++) {
+            let sum = 0
+            for (let j = 0; j < patches.length; j++) {
+                sum += patches[j][i] * (weights[j] / weightSum)
+            }
+            result[i] = sum
+        }
+
+        return result
+    }
+
+    /**
+     * 为单个采样点生成图像对
+     * 核心功能：根据elevation和采样点位置，生成AI需要的两张融合图像
+     */
+    static generateImagePairForPoint(
+        elevation: number,           // 当前层高
+        point: SamplingPoint,        // 采样点坐标(x,y)
+        availableElevations: number[] // 所有可用的切片层高
+    ): { extraImage: Float32Array, fusedImage: Float32Array } | null {
+
+        // 1. 生成extra_image：向上取最多2张图
+        const upperElevations = availableElevations
+            .filter(e => e >= elevation)  // 大于等于当前elevation
+            .sort((a, b) => a - b)        // 从小到大排序
+            .slice(0, 2)                  // 只取前2张
+
+        if (upperElevations.length === 0) {
+            console.warn(`[ImageProcessor] elevation=${elevation}无法找到向上的切片`)
+            return null
+        }
+
+        // 从每张切片中裁剪出指定位置的256x256图像
+        const extraPatches: Float32Array[] = []
+        for (const elev of upperElevations) {
+            const canvas = SlicerService.getSlice(elev)
+            if (canvas) {
+                const patch = this.extractPatch(canvas, point.x, point.y)
+                extraPatches.push(patch)
+            }
+        }
+
+        if (extraPatches.length === 0) return null
+
+        // 如果只有1张图，直接用；如果有2张，求平均
+        const extraImage = extraPatches.length === 1
+            ? extraPatches[0]
+            : this.mergePatches(extraPatches)
+
+        // 2. 生成fused_image：向下取8张图
+        const lowerElevations = availableElevations
+            .filter(e => e < elevation)   // 小于当前elevation
+            .sort((a, b) => b - a)        // 从大到小排序（离当前层近的优先）
+
+        const fusedPatches: Float32Array[] = []
+
+        // 准备8张图：前N张是真实切片，后面用黑图补齐
+        for (let i = 0; i < 8; i++) {
+            if (i < lowerElevations.length) {
+                const canvas = SlicerService.getSlice(lowerElevations[i])
+                if (canvas) {
+                    fusedPatches.push(this.extractPatch(canvas, point.x, point.y))
+                } else {
+                    fusedPatches.push(new Float32Array(256 * 256))  // 黑图
+                }
+            } else {
+                fusedPatches.push(new Float32Array(256 * 256))      // 黑图
+            }
+        }
+
+        // 用Beer-Lambert融合
+        const fusedImage = this.mergePatchesBeerLambert(fusedPatches)
+
+        return { extraImage, fusedImage }
     }
 }

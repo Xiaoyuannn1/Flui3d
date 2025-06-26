@@ -19,7 +19,7 @@ export class AIService {
      */
 
     async loadModel(): Promise<void> {
-        console.log('[AI] 🚀 开始加载ONNX模型...')
+        console.log('开始加载ONNX模型...')
 
         // 设置 WASM 资源路径（CPU 后端用）
         ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.14.0/dist/'
@@ -28,47 +28,65 @@ export class AIService {
 
         try {
             // 先尝试只用 WebGL
-            console.log('[AI] 🔧 尝试 WebGL 后端加载（GPU 优先）...')
+            console.log('尝试 WebGL 后端加载（GPU 优先）...')
             this.session = await ort.InferenceSession.create(
                 '/models/compensation_model_no_bn_fixed.onnx',
                 { executionProviders: ['webgl'] }
             )
             providerUsed = 'webgl'
-            console.log('[AI] ✅ WebGL 后端加载成功，使用 GPU 加速！')
+            console.log('WebGL 后端加载成功，使用 GPU')
         } catch (webglErr: any) {
-            console.warn('[AI] ⚠️ WebGL 后端初始化失败，准备回退到 WASM（CPU）...', webglErr.message)
+            console.warn(' WebGL 后端初始化失败，准备回退到 WASM（CPU）...', webglErr.message)
             // 回退到只用 WASM
             this.session = await ort.InferenceSession.create(
                 '/models/compensation_model_no_bn_fixed.onnx',
                 { executionProviders: ['wasm'] }
             )
             providerUsed = 'wasm'
-            console.log('[AI] ✅ WASM 后端加载成功，使用 CPU 运行')
+            console.log(' WASM 后端加载成功，使用 CPU 运行')
         }
+
+        //
+        // //只使用cpu进行测试
+        // try {
+        //     // 🔥 直接使用WASM（CPU）进行测试
+        //     console.log('[AI] 🔧 使用 WASM 后端加载（CPU 测试模式）...')
+        //     this.session = await ort.InferenceSession.create(
+        //         '/models/compensation_model_no_bn_fixed.onnx',
+        //         { executionProviders: ['wasm'] }
+        //     )
+        //     providerUsed = 'wasm'
+        //     console.log('[AI] ✅ WASM 后端加载成功，使用 CPU 运行')
+        //
+        // } catch (wasmErr: any) {
+        //     console.error('[AI] ❌ WASM 后端也失败了:', wasmErr.message)
+        //     throw wasmErr
+        // }
+
 
         this.isModelLoaded = true
 
         // 打印实际使用的后端
-        console.log('[AI] 🎯 实际使用后端：', providerUsed)
+        console.log(' 实际使用后端：', providerUsed)
 
         // 🔥 重要：详细打印模型的输入输出信息
-        console.log('[AI] 📥 输入信息详情:')
+        console.log('模型输入信息详情:')
         this.session.inputNames.forEach((name, index) => {
             console.log(`  输入${index}: 名称="${name}"`)
         })
 
-        console.log('[AI] 📤 输出信息详情:')
+        console.log('模型输出信息详情:')
         this.session.outputNames.forEach((name, index) => {
             console.log(`  输出${index}: 名称="${name}"`)
         })
 
-        // 🔥 1.14.0版本获取输入输出信息的正确方法
-        console.log('[AI] 🎯 完整的session信息:')
-        console.log('所有输入名称:', this.session.inputNames)
-        console.log('所有输出名称:', this.session.outputNames)
+        // // 🔥 1.14.0版本获取输入输出信息的正确方法
+        // console.log('[AI] 🎯 完整的session信息:')
+        // console.log('所有输入名称:', this.session.inputNames)
+        // console.log('所有输出名称:', this.session.outputNames)
 
         // 尝试用第一个样本数据测试模型接受的输入格式
-        console.log('[AI] 🧪 准备测试模型输入格式...')
+        //console.log('[AI] 🧪 准备测试模型输入格式...')
     }
 
 
@@ -86,13 +104,13 @@ export class AIService {
 
         try {
             // 🔥 修复：确保数据长度和形状匹配
-            console.log('[AI] 数据检查 - fused长度:', fusedImageData.length, '期望:', 1*1*256*256)
-            console.log('[AI] 数据检查 - extra长度:', extraImageData.length, '期望:', 1*1*256*256)
-
-            console.log('[AI] fused前5个值:', fusedImageData.slice(0, 5))
-            console.log('[AI] extra前5个值:', extraImageData.slice(0, 5))
-            console.log('[AI] fused最小最大值:', Math.min(...fusedImageData), Math.max(...fusedImageData))
-            console.log('[AI] extra最小最大值:', Math.min(...extraImageData), Math.max(...extraImageData))
+            // console.log('[AI] 数据检查 - fused长度:', fusedImageData.length, '期望:', 1*1*256*256)
+            // console.log('[AI] 数据检查 - extra长度:', extraImageData.length, '期望:', 1*1*256*256)
+            //
+            // console.log('[AI] fused前5个值:', fusedImageData.slice(0, 5))
+            // console.log('[AI] extra前5个值:', extraImageData.slice(0, 5))
+            // console.log('[AI] fused最小最大值:', Math.min(...fusedImageData), Math.max(...fusedImageData))
+            // console.log('[AI] extra最小最大值:', Math.min(...extraImageData), Math.max(...extraImageData))
             // 验证数据长度
             const expectedLength = 1 * 1 * 256 * 256; // 65536
             if (fusedImageData.length !== expectedLength) {
@@ -106,8 +124,8 @@ export class AIService {
             const fusedTensor = new ort.Tensor('float32', fusedImageData, [1, 1, 256, 256])
             const extraTensor = new ort.Tensor('float32', extraImageData, [1, 1, 256, 256])
 
-            console.log('[AI] 张量形状 - fused:', fusedTensor.dims)
-            console.log('[AI] 张量形状 - extra:', extraTensor.dims)
+            // console.log('[AI] 张量形状 - fused:', fusedTensor.dims)
+            // console.log('[AI] 张量形状 - extra:', extraTensor.dims)
 
             // 执行推理
             const outputs = await this.session.run({
@@ -120,7 +138,7 @@ export class AIService {
             return prediction
 
         } catch (error) {
-            console.error('[AI] ❌ 单次预测失败:', error)
+            console.error('[AI] 单次预测失败:', error)
             throw new Error(`AI预测失败: ${String(error)}`)
         }
     }
@@ -142,8 +160,8 @@ export class AIService {
         const results: PredictionResult[] = []
         const totalSamples = imagePairs.length
 
-        console.log(`[AI] 🔄 开始批量预测，共 ${totalSamples} 个采样点`)
-        console.log(`[AI] 📊 预期处理时间: ${(totalSamples * 0.1).toFixed(1)}秒 (每个样本约100ms)`)
+        // console.log(`[AI] 🔄 开始批量预测，共 ${totalSamples} 个采样点`)
+        // console.log(`[AI] 📊 预期处理时间: ${(totalSamples * 0.1).toFixed(1)}秒 (每个样本约100ms)`)
 
         for (let i = 0; i < imagePairs.length; i++) {
             const pair = imagePairs[i]
@@ -169,7 +187,7 @@ export class AIService {
                 }
 
             } catch (error) {
-                console.error(`[AI] ❌ 预测失败 - 位置(${pair.x}, ${pair.y}):`, error)
+                console.error(`[AI] 预测失败 - 位置(${pair.x}, ${pair.y}):`, error)
                 // 预测失败时使用默认值，避免整个流程中断
                 results.push({
                     x: pair.x,
@@ -179,8 +197,8 @@ export class AIService {
             }
         }
 
-        console.log('[AI] 🎉 批量预测完成!')
-        console.log(`[AI] 📈 成功预测 ${results.filter(r => r.prediction !== 0.0).length}/${totalSamples} 个样本`)
+        //console.log('[AI] 🎉 批量预测完成!')
+        console.log(`成功预测 ${results.filter(r => r.prediction !== 0.0).length}/${totalSamples} 个样本`)
 
         return results
     }

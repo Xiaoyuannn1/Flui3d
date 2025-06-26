@@ -138,6 +138,11 @@
                 <td><a href="https://github.com/valgeirb/vue3-popper">GitHub Repository</a></td>
                 <td><a href="https://github.com/valgeirb/vue3-popper/blob/main/LICENSE">MIT License</a></td>
               </tr>
+              <tr>
+                <td>OpenJSCAD.org</td>
+                <td><a href="https://github.com/jscad/OpenJSCAD.org">GitHub Repository</a></td>
+                <td><a href="https://github.com/jscad/OpenJSCAD.org/blob/master/LICENSE">MIT License</a></td>
+              </tr>
               </tbody>
             </table>
 

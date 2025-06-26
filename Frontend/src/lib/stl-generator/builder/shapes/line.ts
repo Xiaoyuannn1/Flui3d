@@ -1,4 +1,4 @@
-
+// src/lib/stl-generator/builder/shapes/line.ts
 import { cuboid }  from '@jscad/modeling/src/primitives/index'
 import { translate, rotate } from '@jscad/modeling/src/operations/transforms/index'
 import { LineShape } from '../../model/types'

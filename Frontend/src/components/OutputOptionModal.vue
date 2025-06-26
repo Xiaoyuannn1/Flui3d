@@ -234,14 +234,6 @@
                 Generate
               </button>
             </div>
-            <button
-                type="button"
-                class="btn btn-warning me-2"
-                @click="testWebGL"
-                style="font-size: 12px; padding: 4px 8px;"
-            >
-              测试WebGL
-            </button>
           </form>
         </div>
       </div>
@@ -263,6 +255,7 @@ interface AIPredictionProgress {
   progress?: number
 }
 import { runWebGLTest } from '@/services/webglTest'
+import { buildRequestBody } from '@/library/utilities/payloadBuilder'
 
 export default defineComponent({
   components: { STLPreviewVue },
@@ -326,7 +319,7 @@ export default defineComponent({
 
           // 4. 🔥 关键修正：如果勾选AI，主动执行切片操作
           if (aiChecked.value && aiModelLoaded.value) {
-            console.log('[UI] 🔄 为AI预测执行切片操作...')
+            //console.log('[UI] 🔄 为AI预测执行切片操作...')
 
             // 执行切片操作（这会自动保存slice_0和slice_100）
             await SlicerService.generateSlices(
@@ -358,7 +351,7 @@ export default defineComponent({
       }
 
       try {
-        console.log('[UI] 🚀 开始初始化AI模型...')
+        //console.log('[UI] 🚀 开始初始化AI模型...')
         aiError.value = null
 
         await AIPredictionService.initialize((progress) => {
@@ -367,17 +360,18 @@ export default defineComponent({
         })
 
         aiModelLoaded.value = true
-        console.log('[UI] ✅ AI模型初始化成功!')
+        //console.log('[UI] ✅ AI模型初始化成功!')
         return true
 
       } catch (error: any) {
-        console.error('[UI] ❌ AI模型初始化失败:', error)
+        //console.error('[UI] ❌ AI模型初始化失败:', error)
         aiError.value = `AI模型加载失败: ${error.message}`
         aiModelLoaded.value = false
         return false
       }
     }
     //  新增：执行AI预测的函数
+// 新增：执行AI预测的函数
     const performAIPrediction = async () => {
       if (!aiChecked.value) {
         console.log('[UI] AI未勾选，跳过预测')
@@ -385,32 +379,41 @@ export default defineComponent({
       }
 
       try {
-        console.log('[UI] 🤖 开始执行AI预测...')
+        //console.log('[UI] 🤖 开始执行AI预测...')
         aiProcessing.value = true
         aiError.value = null
 
-        // 检查切片是否准备好
-        if (!SlicerService.areAISlicesReady()) {
-          throw new Error('切片图像未准备好，请先生成STL')
-        }
+        // 1. 构建JSON数据
+        const chipJSONString = buildRequestBody(
+            precisionValue[precisionIdx.value],
+            globalChecked.value,
+            globalCompensation.value,
+            localChecked.value,
+            localCompensationMin.value,
+            minAt.value,
+            localCompensationMax.value,
+            maxAt.value
+        )
+        const chipJSON = JSON.parse(chipJSONString)
+        //console.log('[UI] 📋 JSON数据构建完成，层数:', chipJSON.layers?.length || 0)
 
-        // 执行AI预测
+        // 2. 执行AI预测，传递JSON数据
         const predictions = await AIPredictionService.performPrediction((progress) => {
           aiProgress.value = progress
-          console.log(`[UI] AI预测进度: ${progress.message}`)
-        })
+          console.log(`[UI] ${progress.message}`)
+        }, chipJSON)  // 传递chipJSON
 
-        console.log('[UI] 🎉 AI预测完成!')
-        console.log(`[UI] 📊 获得 ${predictions.length} 个预测结果`)
+        //console.log('[UI] 🎉 AI预测完成!')
+        //console.log(`[UI] 📊 获得 ${predictions.length} 个预测结果`)
 
-        // 🎯 这里是您要求的功能：在控制台输出预测结果
-        console.log('[UI] 📋 AI预测结果汇总:')
+        // 3. 输出结果汇总
+        //console.log('[UI] 📋 AI预测结果汇总:')
         predictions.forEach((result, index) => {
           console.log(`[UI] ${index + 1}. Point(${result.x}, ${result.y}): Z_metric = ${result.prediction.toFixed(6)}`)
         })
 
       } catch (error: any) {
-        console.error('[UI] ❌ AI预测失败:', error)
+        //console.error('[UI] ❌ AI预测失败:', error)
         aiError.value = `AI预测失败: ${error.message}`
         alert(`AI预测失败: ${error.message}`)
 
@@ -495,16 +498,6 @@ export default defineComponent({
       }
     });
 
-    const testWebGL = async () => {
-      console.log('🚀 开始WebGL兼容性测试...')
-      console.log('请查看控制台输出，测试大约需要10-15秒')
-      try {
-        await runWebGLTest()
-        console.log('✅ WebGL测试完成！请查看上面的详细结果')
-      } catch (error) {
-        console.error('❌ WebGL测试失败:', error)
-      }
-    }
 
     return {
       globalChecked,
@@ -527,8 +520,7 @@ export default defineComponent({
       aiProgress,
       aiError,
       initializeAIModel,
-      performAIPrediction,
-      testWebGL
+      performAIPrediction
     };
   }
 });
