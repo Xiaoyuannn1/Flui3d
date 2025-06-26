@@ -17,19 +17,17 @@ export interface AISliceResult extends SliceResult {
 export class SlicerService {
     // 新增：保存AI需要的切片Canvas
     private static allSlices: Map<number, HTMLCanvasElement> = new Map()
-
     /**
      * 从STL ArrayBuffer生成切片图像（AI增强版）
      */
     static async generateSlices(
         stlData: ArrayBuffer,
         zStep = 99.99,
-        canvasWidth = 2560,
-        canvasHeight = 1620,
+        // canvasWidth = 2560,
+        // canvasHeight = 1620,
         scaleFactor = 10
     ): Promise<AISliceResult> {
 
-        //console.log('[SlicerService] 🚀 开始生成切片（AI增强版）...')
 
         // 1. 解析STL数据
         const triangles = this.parseSTLBuffer(stlData)
@@ -41,6 +39,7 @@ export class SlicerService {
         let zMin = Infinity, zMax = -Infinity
         let xMin = Infinity, xMax = -Infinity
         let yMin = Infinity, yMax = -Infinity
+
 
         triangles.forEach(triangle => {
             slicer.addTriangle(triangle)
@@ -54,7 +53,8 @@ export class SlicerService {
                 if (z > zMax) zMax = z
             })
         })
-
+        const canvasWidth = (xMax - xMin) / scaleFactor
+        const canvasHeight = (yMax - yMin) / scaleFactor
         //console.log('[SlicerService] 📏 边界框:', { xMin, xMax, yMin, yMax, zMin, zMax })
 
         // 4. 计算布局参数
@@ -69,8 +69,6 @@ export class SlicerService {
         const sliceImages: Blob[] = []
         const sliceInfo: { zValue: number; filename: string }[] = []
         let sliceIndex = 0  // 添加切片索引计数器
-
-
 
         for (let z = Math.ceil(zMin / zStep) * zStep; z <= zMax; z += zStep) {
 
@@ -135,6 +133,11 @@ export class SlicerService {
             const filename = `slice_${z}.png`
             sliceInfo.push({ zValue: z, filename })
 
+            // 新增：下载第一张切片
+            if (sliceIndex === 0) {
+                this.downloadFirstSlice(blob, filename)
+            }
+
             sliceIndex++  // 增加切片索引
         }
 
@@ -145,7 +148,39 @@ export class SlicerService {
             sliceInfo
         }
     }
+    // src/services/slicerService.ts
+// 在 SlicerService 类中添加以下私有方法
 
+    /**
+     * 下载第一张切片图像
+     */
+    private static downloadFirstSlice(blob: Blob, originalFilename: string): void {
+        try {
+            // 生成带时间戳的文件名
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+            const downloadFilename = `first_slice_${timestamp}_${originalFilename}`
+
+            // 创建下载链接
+            const url = URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = downloadFilename
+            link.style.display = 'none'
+
+            // 触发下载
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
+
+            // 清理URL
+            URL.revokeObjectURL(url)
+
+            console.log(`[SlicerService] 第一张切片已下载: ${downloadFilename}`)
+
+        } catch (error) {
+            console.warn('[SlicerService] 第一张切片下载失败:', error)
+        }
+    }
     /**
      * 获取指定elevation的切片
      */

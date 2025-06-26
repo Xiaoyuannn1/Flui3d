@@ -19,27 +19,25 @@ export class ImageProcessor {
      * 这个函数在干什么：
      * 1. 根据您的要求，从(128,128)开始采样
      * 2. 每隔256像素取一个点（不重复）
-     * 3. 生成2560x1620图像上的所有采样点坐标
+     * 3. 生成图像上的所有采样点坐标
      */
-    static generateSamplingPoints(): SamplingPoint[] {
+
+    static generateSamplingPoints(canvasWidth: number, canvasHeight: number): SamplingPoint[] {
         const points: SamplingPoint[] = []
 
-        // 从(128,128)开始，每隔256像素采样一次
-        for (let y = 128; y < 1620; y += 256) {
-            for (let x = 128; x < 2560; x += 256) {
+        // 从(128,128)开始，每隔256像素采样一次，但不超过画布边界
+        for (let y = 128; y < canvasHeight; y += 256) {
+            for (let x = 128; x < canvasWidth; x += 256) {
                 points.push({ x, y })
             }
         }
-
-        // console.log(`[ImageProcessor] 📍 生成 ${points.length} 个采样点`)
-        // console.log(`[ImageProcessor] 🎯 采样范围: X=[128-${points[points.length-1].x}], Y=[128-${points[points.length-1].y}]`)
-
+        console.log(`[ImageProcessor]  生成 ${points.length} 个采样点`)
+        console.log(`[ImageProcessor]  采样范围: X=[128-${points[points.length-1].x}], Y=[128-${points[points.length-1].y}]`)
         return points
     }
-
     /**
      * 这个函数在干什么：
-     * 1. 接收一个Canvas元素（包含2560x1620的切片图像）
+     * 1. 接收一个Canvas元素（包含的切片图像）
      * 2. 在指定的中心点裁剪出256x256的小块
      * 3. 如果超出边界，用黑色像素填充
      * 4. 将图像数据转换为Float32Array格式
@@ -103,7 +101,7 @@ export class ImageProcessor {
      * 2. 返回所有的图像patch数据
      */
     static extractAllPatches(canvas: HTMLCanvasElement): ImagePatch[] {
-        const samplingPoints = this.generateSamplingPoints()
+        const samplingPoints = this.generateSamplingPoints(canvas.width, canvas.height)
         const patches: ImagePatch[] = []
 
         //console.log(`[ImageProcessor] ✂️  开始从图像中提取 ${samplingPoints.length} 个patch...`)
@@ -117,7 +115,7 @@ export class ImageProcessor {
             })
         }
 
-        //console.log(`[ImageProcessor] ✅ 成功提取 ${patches.length} 个 256x256 patch`)
+        console.log(`[ImageProcessor]  成功提取 ${patches.length} 个 256x256 patch`)
         return patches
     }
 

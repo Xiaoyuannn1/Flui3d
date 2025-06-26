@@ -99,7 +99,14 @@ export class AIPredictionService {
 
             // 3. 获取可用的切片和采样点
             const availableElevations = SlicerService.getAvailableElevations()
-            const samplingPoints = ImageProcessor.generateSamplingPoints()  // 60个点
+            // 获取第一个可用切片的画布尺寸
+            const firstElevation = availableElevations[0]
+            const firstCanvas = SlicerService.getSlice(firstElevation)
+            if (!firstCanvas) {
+                throw new Error('无法获取切片画布尺寸')
+            }
+            const samplingPoints = ImageProcessor.generateSamplingPoints(firstCanvas.width, firstCanvas.height)
+
 
             //console.log(`[AI] 可用切片:`, availableElevations)
             //console.log(`[AI] 预测任务: ${elevations.length}层 × ${samplingPoints.length}点 = ${elevations.length * samplingPoints.length}次`)

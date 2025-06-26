@@ -325,8 +325,6 @@ export default defineComponent({
             await SlicerService.generateSlices(
                 contentStore.stlData,
                 100,    // zStep
-                2560,   // canvasWidth
-                1620,   // canvasHeight
                 10      // scaleFactor
             )
 
@@ -438,8 +436,6 @@ export default defineComponent({
         const result = await SlicerService.generateSlices(
             stlData,
             100,    // Z步长
-            2560,   // 画布宽度
-            1620,   // 画布高度
             10      // 缩放因子
         )
 
