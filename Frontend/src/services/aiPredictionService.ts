@@ -11,6 +11,7 @@ export interface AIPredictionProgress {
 
 export class AIPredictionService {
     private static isInitialized = false
+    private static shapeHeightData: Map<number, number[]> = new Map()
 
     static async initialize(progressCallback?: (progress: AIPredictionProgress) => void): Promise<void> {
         if (this.isInitialized) {
@@ -174,7 +175,22 @@ export class AIPredictionService {
                             }
                         }
 
-                        //console.log(`[AI] Elevation ${elevation} Point (${point.x.toString().padStart(4)}, ${point.y.toString().padStart(4)}): Z_metric_pred = ${prediction.toFixed(6)}${shapeInfo}`)
+                        // 计算补偿值
+                        let compensationInfo = ''
+                        if (edgeResult && shapeInfo) {  // 如果点在某个形状内
+                            for (let i = 0; i < edgeResult.shapes.length; i++) {
+                                if (EdgeDetectionService.isPointInShape(point.x, point.y, edgeResult.shapes[i])) {
+                                    const shapeHeights = this.shapeHeightData.get(elevation)  // 获取保存的形状高度
+                                    if (shapeHeights && shapeHeights[i] !== undefined) {
+                                        const compensation = shapeHeights[i] * (prediction - 1)  // 计算补偿值
+                                        compensationInfo = ` [补偿值: ${compensation.toFixed(1)}μm]`
+                                    }
+                                    break
+                                }
+                            }
+                        }
+
+                        console.log(`[AI] Elevation ${elevation} Point (${point.x.toString().padStart(4)}, ${point.y.toString().padStart(4)}): Z_metric_pred = ${prediction.toFixed(6)}${shapeInfo}${compensationInfo}`)
 
                     } catch (error) {
                         console.error(`[AI] 预测失败 elevation=${elevation}, point=(${point.x}, ${point.y}):`, error)
@@ -417,6 +433,8 @@ export class AIPredictionService {
                 )
                 shapeHeights.push(shapeHeight)
             }
+            // 保存形状高度数据
+            this.shapeHeightData.set(baseElevation, shapeHeights)
 
             // 输出结果
             console.log(`[ShapeHeight] Elevation ${baseElevation}的形状高度结果:`)
