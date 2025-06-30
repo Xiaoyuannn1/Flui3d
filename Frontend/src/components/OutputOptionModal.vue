@@ -324,7 +324,7 @@ export default defineComponent({
             // 执行切片操作（这会自动保存slice_0和slice_100）
             await SlicerService.generateSlices(
                 contentStore.stlData,
-                100,    // zStep
+                100.5,    // zStep
                 10      // scaleFactor
             )
 
@@ -406,9 +406,9 @@ export default defineComponent({
 
         // 3. 输出结果汇总
         //console.log('[UI] 📋 AI预测结果汇总:')
-        predictions.forEach((result, index) => {
-          console.log(`[UI] ${index + 1}. Point(${result.x}, ${result.y}): Z_metric = ${result.prediction.toFixed(6)}`)
-        })
+        // predictions.forEach((result, index) => {
+        //   console.log(`[UI] ${index + 1}. Point(${result.x}, ${result.y}): Z_metric = ${result.prediction.toFixed(6)}`)
+        // })
 
       } catch (error: any) {
         //console.error('[UI] ❌ AI预测失败:', error)
@@ -435,7 +435,7 @@ export default defineComponent({
         // 执行切片
         const result = await SlicerService.generateSlices(
             stlData,
-            100,    // Z步长
+            100.5,    // Z步长
             10      // 缩放因子
         )
 

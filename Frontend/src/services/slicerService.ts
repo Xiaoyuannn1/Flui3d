@@ -1,4 +1,5 @@
 import createSlicer from 'mesh-slice-polygon'
+import { DownloadService } from './downloadService'
 
 export interface SliceResult {
     sliceImages: Blob[]
@@ -22,7 +23,7 @@ export class SlicerService {
      */
     static async generateSlices(
         stlData: ArrayBuffer,
-        zStep = 99.99,
+        zStep = 100.5,
         // canvasWidth = 2560,
         // canvasHeight = 1620,
         scaleFactor = 10
@@ -63,8 +64,6 @@ export class SlicerService {
         const padX = (canvasWidth - contentW) / 2
         const padY = (canvasHeight - contentH) / 2
 
-        //console.log('[SlicerService] 🎨 画布参数:', { contentW, contentH, padX, padY })
-
         // 5. 生成切片（修改部分：保存特定切片）
         const sliceImages: Blob[] = []
         const sliceInfo: { zValue: number; filename: string }[] = []
@@ -104,83 +103,45 @@ export class SlicerService {
 
             ctx.fill('evenodd')
 
-            // ✅ 添加这5行：保存当前切片
+            //  添加这5行：保存当前切片
             const sliceCanvas = document.createElement('canvas')
             sliceCanvas.width = canvasWidth
             sliceCanvas.height = canvasHeight
             const sliceCtx = sliceCanvas.getContext('2d')!
             sliceCtx.drawImage(canvas, 0, 0)
-            this.allSlices.set(z, sliceCanvas)
+            // 修改这里：用规整的elevation作为key，而不是实际的z值
+            const normalizedElevation = sliceIndex * 100  // 0, 100, 200, 300...
+            this.allSlices.set(normalizedElevation, sliceCanvas)
 
-
-            // 添加顺时针90度旋转（注释掉的代码保持原样）
-            // const tempCanvas = document.createElement('canvas')
-            // tempCanvas.width = canvasHeight // 注意宽高交换
-            // tempCanvas.height = canvasWidth
-            // const tempCtx = tempCanvas.getContext('2d')!
-            //
-            // tempCtx.save()
-            // tempCtx.translate(tempCanvas.width / 2, tempCanvas.height / 2)
-            // tempCtx.rotate(Math.PI / 2) // 顺时针90度
-            // tempCtx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2)
-            // tempCtx.restore()
 
             // 转换为Blob
-            //const blob = await this.canvasToBlob(tempCanvas)
             const blob = await this.canvasToBlob(canvas)
             sliceImages.push(blob)
 
-            const filename = `slice_${z}.png`
-            sliceInfo.push({ zValue: z, filename })
-
-            // 新增：下载第一张切片
-            if (sliceIndex === 0) {
-                this.downloadFirstSlice(blob, filename)
-            }
+            // 修改这里：文件名使用规整的elevation
+            const filename = `slice_${normalizedElevation}.png`
+            sliceInfo.push({ zValue: normalizedElevation, filename })
 
             sliceIndex++  // 增加切片索引
         }
 
-        //console.log(`[SlicerService] ✅ 切片生成完成，共 ${sliceImages.length} 张`)
-        // 返回增强结果
+        // 新增：一次性下载所有切片
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+        const zipFilename = `all_slices_${timestamp}.zip`
+
+        // 导入 DownloadService（在文件顶部添加）
+        const { DownloadService } = await import('./downloadService')
+        await DownloadService.downloadSlicesAsZip(sliceImages, sliceInfo, zipFilename)
+
+        console.log(`[SlicerService] ✅ 切片生成完成，共 ${sliceImages.length} 张，已下载ZIP: ${zipFilename}`)
+
         return {
             sliceImages,
             sliceInfo
         }
     }
-    // src/services/slicerService.ts
-// 在 SlicerService 类中添加以下私有方法
 
-    /**
-     * 下载第一张切片图像
-     */
-    private static downloadFirstSlice(blob: Blob, originalFilename: string): void {
-        try {
-            // 生成带时间戳的文件名
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-            const downloadFilename = `first_slice_${timestamp}_${originalFilename}`
 
-            // 创建下载链接
-            const url = URL.createObjectURL(blob)
-            const link = document.createElement('a')
-            link.href = url
-            link.download = downloadFilename
-            link.style.display = 'none'
-
-            // 触发下载
-            document.body.appendChild(link)
-            link.click()
-            document.body.removeChild(link)
-
-            // 清理URL
-            URL.revokeObjectURL(url)
-
-            console.log(`[SlicerService] 第一张切片已下载: ${downloadFilename}`)
-
-        } catch (error) {
-            console.warn('[SlicerService] 第一张切片下载失败:', error)
-        }
-    }
     /**
      * 获取指定elevation的切片
      */

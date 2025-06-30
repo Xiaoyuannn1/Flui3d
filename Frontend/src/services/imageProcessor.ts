@@ -22,18 +22,45 @@ export class ImageProcessor {
      * 3. 生成图像上的所有采样点坐标
      */
 
-    static generateSamplingPoints(canvasWidth: number, canvasHeight: number): SamplingPoint[] {
+    static generateSamplingPoints(canvasWidth?: number, canvasHeight?: number, precision?: string): SamplingPoint[] {
         const points: SamplingPoint[] = []
 
-        // 从(128,128)开始，每隔256像素采样一次，但不超过画布边界
-        for (let y = 128; y < canvasHeight; y += 256) {
-            for (let x = 128; x < canvasWidth; x += 256) {
-                points.push({ x, y })
+        // 根据precision确定采样步长
+        let step: number
+        switch (precision) {
+            case 'High':
+                step = 20
+                break
+            case 'Medium':
+                step = 28
+                break
+            case 'Low':
+                step = 36
+                break
+            default:
+                step = 256  // 默认值，保持向后兼容
+        }
+
+        if (canvasWidth && canvasHeight) {
+            // 动态采样：起始点固定(128,128)，步长根据precision变化
+            for (let y = 128; y < canvasHeight; y += step) {
+                for (let x = 128; x < canvasWidth; x += step) {
+                    points.push({ x, y })
+                }
+            }
+        } else {
+            // 回退到固定采样（保持向后兼容）
+            for (let y = 128; y < 1620; y += 256) {
+                for (let x = 128; x < 2560; x += 256) {
+                    points.push({ x, y })
+                }
             }
         }
-        console.log(`[ImageProcessor]  生成 ${points.length} 个采样点`)
+
+        console.log(`[ImageProcessor] 生成 ${points.length} 个采样点，间距: ${step}像素`)
         console.log(`[ImageProcessor]  采样范围: X=[128-${points[points.length-1].x}], Y=[128-${points[points.length-1].y}]`)
         return points
+
     }
     /**
      * 这个函数在干什么：
