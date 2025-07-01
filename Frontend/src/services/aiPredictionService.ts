@@ -2,6 +2,9 @@ import { aiService, PredictionResult } from './aiService'
 import { ImageProcessor, SamplingPoint } from './imageProcessor'
 import { SlicerService } from './slicerService'
 import { EdgeDetectionService, EdgeDetectionResult, Shape } from './edgeDetectionService'  // 添加 Shape 导入
+import { CompensationBlock } from '@/lib/stl-generator/builder/shapes/compensation'
+import { useContentStore } from '@/stores/content'
+
 
 export interface AIPredictionProgress {
     stage: 'loading' | 'processing' | 'predicting' | 'completed' | 'error'
@@ -221,9 +224,92 @@ export class AIPredictionService {
                 console.log(`[EdgeDetection] Elevation ${result.elevation}: ${result.totalShapes} 个形状，总面积 ${totalArea.toFixed(0)} 像素²`)
             })
 
+
+            // 新增：收集补偿数据并生成补偿STL
+            console.log(`[AI] 开始收集补偿数据...`)
+
+            const compensationBlocks: CompensationBlock[] = []
+            let precisionValue: number
+
+            // 解析precision数值
+            switch (precision) {
+                case 'High': precisionValue = 20; break
+                case 'Medium': precisionValue = 28; break
+                case 'Low': precisionValue = 36; break
+                default: precisionValue = 28
+            }
+
+            // 遍历所有AI预测结果，收集补偿数据
+            allResults.forEach(result => {
+                // 为每个预测点找到对应的elevation和形状
+                for (const elevation of elevations) {
+                    const edgeResult = edgeResults.find(r => r.elevation === elevation)
+                    if (!edgeResult) continue
+
+                    // 检查该点在哪个形状内
+                    for (let shapeIndex = 0; shapeIndex < edgeResult.shapes.length; shapeIndex++) {
+                        if (EdgeDetectionService.isPointInShape(result.x, result.y, edgeResult.shapes[shapeIndex])) {
+                            const shapeHeights = this.shapeHeightData.get(elevation)
+                            if (shapeHeights && shapeHeights[shapeIndex] !== undefined) {
+                                // 计算补偿值：形状高度 × (预测值 - 1)
+                                const compensation = shapeHeights[shapeIndex] * (result.prediction - 1)
+                                const compensationCeiled = Math.ceil(Math.abs(compensation))  // 向上取整
+
+                                if (compensationCeiled > 0) {  // 只处理正补偿
+                                    compensationBlocks.push({
+                                        x: result.x,              // 像素坐标
+                                        y: result.y,
+                                        elevation: elevation,
+                                        precision: precisionValue,
+                                        compensation: compensationCeiled,
+                                        canvasHeight: firstCanvas.height  // 新增：传入画布高度
+                                    })
+
+                                    console.log(`[AI] 补偿点: (${result.x},${result.y}) elevation=${elevation} 补偿=${compensationCeiled}μm`)
+                                }
+                            }
+                            break  // 找到形状后退出循环
+                        }
+                    }
+                }
+            })
+
+            console.log(`[AI] 收集到 ${compensationBlocks.length} 个补偿块`)
+
+            // 新增：重新生成包含补偿的STL
+            if (compensationBlocks.length > 0) {
+                console.log(`[AI] 开始重新生成包含补偿的STL...`)
+
+                try {
+                    const contentStore = useContentStore()
+
+                    // 关键：调用 requestNewStlData 并传入补偿数据
+                    await contentStore.requestNewStlData(
+                        precision,
+                        false,  // globalCompCheck
+                        0,      // globalComp
+                        false,  // localCompCheck
+                        0,      // localCompMin
+                        0,      // minAt
+                        0,      // localCompMax
+                        0,      // maxAt
+                        true,   // binary
+                        compensationBlocks  // 传入补偿数据
+                    )
+
+                    console.log(`[AI] 补偿STL生成完成！前端预览已更新为补偿后的STL`)
+
+                } catch (error) {
+                    console.error(`[AI] 补偿STL生成失败:`, error)
+                }
+            } else {
+                console.log(`[AI] 无需要补偿的点，保持原始STL`)
+            }
+
+            // 修改progress message
             progressCallback?.({
                 stage: 'completed',
-                message: `AI预测完成！共${allResults.length}个结果`,
+                message: `AI预测+补偿STL生成完成！`,
                 progress: 100
             })
 

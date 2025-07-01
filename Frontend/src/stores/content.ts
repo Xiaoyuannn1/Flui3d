@@ -28,6 +28,9 @@ import { LevelConnection } from "@/library/levelConnection";
 import { InletOutlet } from "@/library/inletOutlet";
 import { buildRequestBody } from "@/library/utilities/payloadBuilder";
 import { useMoudleStore } from "./module";
+import { CompensationBlock } from '@/lib/stl-generator/builder/shapes/compensation'
+
+
 const sweepingFlag = (a: number[], b: number[], p: number[]) => {
   const x = (p[1] - a[1]) * (b[0] - a[0]) - (p[0] - a[0]) * (b[1] - a[1]);
   return x > 0 ? 0 : 1;
@@ -472,7 +475,8 @@ export const useContentStore = defineStore("content", {
         minAt: number,
         localCompMax: number,
         maxAt: number,
-        binary: boolean
+        binary: boolean,
+        compensationData?: CompensationBlock[]  // 新增参数
     ) {
       this.stlLoadingState = STLLoadingState.Loading;
 
@@ -489,7 +493,9 @@ export const useContentStore = defineStore("content", {
         );
 
         const chipJSON = JSON.parse(chipJSONString);
-        this.stlData = await generateStlInBrowser(chipJSON);
+        // 关键修改：传入补偿数据
+        this.stlData = await generateStlInBrowser(chipJSON, compensationData);
+
 
         // 检查数据内容
         const uint8Array = new Uint8Array(this.stlData)

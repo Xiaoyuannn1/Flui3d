@@ -12,6 +12,9 @@ import { cuboid } from '@jscad/modeling/src/primitives/index'
 import { buildChamfer } from './builder/shapes/chamfer'
 import { serialize } from '@jscad/stl-serializer'
 
+import { buildAllCompensationBlocks, CompensationBlock } from './builder/shapes/compensation'
+
+
 // export async function generateStl(jsonPath: string, outPath: string) {
 //     const design: ChipJSON = readDesignJson(jsonPath)
 //     const precKey = design.general.precision ?? 'Medium'
@@ -96,7 +99,10 @@ import { serialize } from '@jscad/stl-serializer'
 // }
 
 // 在现有代码末尾添加这个函数
-export async function generateStlInBrowser(chipJSON: ChipJSON): Promise<ArrayBuffer> {
+export async function generateStlInBrowser(
+    chipJSON: ChipJSON,
+    compensationData?: CompensationBlock[]
+): Promise<ArrayBuffer> {
     // 这个函数的作用：接收JSON对象，返回STL数据（不涉及文件操作）
     const precKey = chipJSON.general.precision ?? 'Medium'
     const segments = precisionMap[precKey]
@@ -168,6 +174,24 @@ export async function generateStlInBrowser(chipJSON: ChipJSON): Promise<ArrayBuf
         for (const shape of cross.shapes) {
             handleShape(shape)
         }
+    }
+
+    // 新增：处理补偿结构
+    if (compensationData && compensationData.length > 0) {
+        console.log(`[STL] 开始添加 ${compensationData.length} 个补偿结构...`)
+
+        const compensationStructures = buildAllCompensationBlocks(compensationData)
+
+        // 将每个补偿结构与主模型合并（并集操作）
+        compensationStructures.forEach((structure, index) => {
+            model = merge(model, structure, true)
+
+            if ((index + 1) % 50 === 0) {
+                console.log(`[STL] 已合并补偿结构: ${index + 1}/${compensationStructures.length}`)
+            }
+        })
+
+        console.log(`[STL] 补偿结构添加完成，STL已更新`)
     }
 
     // 简化的序列化部分：
