@@ -4,7 +4,7 @@ import { SlicerService } from './slicerService'
 import { EdgeDetectionService, EdgeDetectionResult, Shape } from './edgeDetectionService'  // 添加 Shape 导入
 import { CompensationBlock } from '@/lib/stl-generator/builder/shapes/compensation'
 import { useContentStore } from '@/stores/content'
-
+import { VoronoiService, VoronoiResult } from './voronoiService'
 
 export interface AIPredictionProgress {
     stage: 'loading' | 'processing' | 'predicting' | 'completed' | 'error'
@@ -313,6 +313,9 @@ export class AIPredictionService {
                 progress: 100
             })
 
+            console.log(`[AI] 🎨 开始生成Voronoi划分可视化...`)
+            await this.generateVoronoiVisualizations(edgeResults, allResults, availableElevations, precision)
+
             return allResults
 
         } catch (error) {
@@ -327,7 +330,99 @@ export class AIPredictionService {
             throw error
         }
     }
+    /**
+     * 新增：生成所有elevation的Voronoi可视化
+     */
+    private static async generateVoronoiVisualizations(
+        edgeResults: EdgeDetectionResult[],
+        allResults: PredictionResult[],
+        availableElevations: number[],
+        precision: string
+    ): Promise<void> {
 
+        for (const edgeResult of edgeResults) {
+            const elevation = edgeResult.elevation
+
+            if (edgeResult.shapes.length === 0) {
+                console.log(`[Voronoi] Elevation ${elevation} 无形状，跳过`)
+                continue
+            }
+
+            console.log(`[Voronoi] 处理 Elevation ${elevation}...`)
+
+            // 1. 获取当前elevation的画布
+            const canvas = SlicerService.getSlice(elevation)
+            if (!canvas) {
+                console.warn(`[Voronoi] 无法获取 elevation ${elevation} 的切片`)
+                continue
+            }
+
+            // 2. 收集当前elevation的所有有效点和补偿值
+            const elevationValidPoints: Array<{x: number, y: number, compensation: number}> = []
+
+            allResults.forEach(result => {
+                // 检查该点是否在当前elevation的任何形状内
+                for (let shapeIndex = 0; shapeIndex < edgeResult.shapes.length; shapeIndex++) {
+                    if (EdgeDetectionService.isPointInShape(result.x, result.y, edgeResult.shapes[shapeIndex])) {
+                        const shapeHeights = this.shapeHeightData.get(elevation)
+                        if (shapeHeights && shapeHeights[shapeIndex] !== undefined) {
+                            const compensation = shapeHeights[shapeIndex] * (result.prediction - 1)
+                            elevationValidPoints.push({
+                                x: result.x,
+                                y: result.y,
+                                compensation: Math.round(compensation * 10) / 10  // 保留1位小数
+                            })
+                        }
+                        break
+                    }
+                }
+            })
+
+            if (elevationValidPoints.length === 0) {
+                console.log(`[Voronoi] Elevation ${elevation} 无有效点，跳过`)
+                continue
+            }
+
+            // 3. 为每个形状分别进行Voronoi划分
+            const voronoiResult: VoronoiResult = {
+                elevation: elevation,
+                shapes: []
+            }
+
+            edgeResult.shapes.forEach((shape, shapeIndex) => {
+                // 筛选当前形状内的点
+                const shapePoints = elevationValidPoints.filter(point =>
+                    EdgeDetectionService.isPointInShape(point.x, point.y, shape)
+                )
+
+                if (shapePoints.length === 0) return
+
+                console.log(`[Voronoi] 形状${shapeIndex}: ${shapePoints.length}个有效点`)
+
+                // 进行Voronoi划分
+                const voronoiCells = VoronoiService.divideShape(
+                    shapePoints,
+                    shape,
+                    canvas.width,
+                    canvas.height
+                )
+
+                voronoiResult.shapes.push({
+                    shapeIndex: shapeIndex,
+                    cells: voronoiCells
+                })
+            })
+
+            // 4. 生成可视化图像
+            VoronoiService.generateVoronoiVisualization(
+                canvas,
+                voronoiResult,
+                elevationValidPoints
+            )
+        }
+
+        console.log(`[AI] Voronoi可视化生成完成`)
+    }
     /**
      * 过滤出在形状内的有效采样点
      */
