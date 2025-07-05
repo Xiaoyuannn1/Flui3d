@@ -6,6 +6,9 @@ import { CompensationBlock } from '@/lib/stl-generator/builder/shapes/compensati
 import { useContentStore } from '@/stores/content'
 import { VoronoiService, VoronoiResult } from './voronoiService'
 
+import { VoronoiCompensationData, VoronoiCompensationRegion } from '@/lib/stl-generator/builder/shapes/voronoiCompensation'
+
+
 export interface AIPredictionProgress {
     stage: 'loading' | 'processing' | 'predicting' | 'completed' | 'error'
     message: string
@@ -225,91 +228,55 @@ export class AIPredictionService {
             })
 
 
-            // 新增：收集补偿数据并生成补偿STL
-            console.log(`[AI] 开始收集补偿数据...`)
 
-            const compensationBlocks: CompensationBlock[] = []
-            let precisionValue: number
 
-            // 解析precision数值
-            switch (precision) {
-                case 'High': precisionValue = 20; break
-                case 'Medium': precisionValue = 28; break
-                case 'Low': precisionValue = 36; break
-                default: precisionValue = 28
-            }
+            // 🆕 在删除的代码位置添加这段新代码
+// 替换：收集Voronoi补偿数据并生成补偿STL
+            console.log(`[AI] 🏗️ 开始收集Voronoi补偿数据...`)
 
-            // 遍历所有AI预测结果，收集补偿数据
-            allResults.forEach(result => {
-                // 为每个预测点找到对应的elevation和形状
-                for (const elevation of elevations) {
-                    const edgeResult = edgeResults.find(r => r.elevation === elevation)
-                    if (!edgeResult) continue
+            const voronoiCompensationData = await this.collectVoronoiCompensationData(
+                edgeResults,
+                allResults,
+                availableElevations,
+                precision
+            )
 
-                    // 检查该点在哪个形状内
-                    for (let shapeIndex = 0; shapeIndex < edgeResult.shapes.length; shapeIndex++) {
-                        if (EdgeDetectionService.isPointInShape(result.x, result.y, edgeResult.shapes[shapeIndex])) {
-                            const shapeHeights = this.shapeHeightData.get(elevation)
-                            if (shapeHeights && shapeHeights[shapeIndex] !== undefined) {
-                                // 计算补偿值：形状高度 × (预测值 - 1)
-                                const compensation = shapeHeights[shapeIndex] * (result.prediction - 1)
-                                const compensationCeiled = Math.ceil(Math.abs(compensation))  // 向上取整
-
-                                if (compensationCeiled > 0) {  // 只处理正补偿
-                                    compensationBlocks.push({
-                                        x: result.x,              // 像素坐标
-                                        y: result.y,
-                                        elevation: elevation,
-                                        precision: precisionValue,
-                                        compensation: compensationCeiled,
-                                        canvasHeight: firstCanvas.height  // 新增：传入画布高度
-                                    })
-
-                                    console.log(`[AI] 补偿点: (${result.x},${result.y}) elevation=${elevation} 补偿=${compensationCeiled}μm`)
-                                }
-                            }
-                            break  // 找到形状后退出循环
-                        }
-                    }
-                }
-            })
-
-            console.log(`[AI] 收集到 ${compensationBlocks.length} 个补偿块`)
-
-            // 新增：重新生成包含补偿的STL
-            if (compensationBlocks.length > 0) {
-                console.log(`[AI] 开始重新生成包含补偿的STL...`)
+            if (voronoiCompensationData.length > 0) {
+                console.log(`[AI] 开始重新生成包含Voronoi补偿的STL...`)
 
                 try {
                     const contentStore = useContentStore()
 
-                    // 关键：调用 requestNewStlData 并传入补偿数据
+                    // 重新生成包含Voronoi补偿的STL
                     await contentStore.requestNewStlData(
                         precision,
-                        false,  // globalCompCheck
-                        0,      // globalComp
-                        false,  // localCompCheck
-                        0,      // localCompMin
-                        0,      // minAt
-                        0,      // localCompMax
-                        0,      // maxAt
+                        false,  // 这些参数暂时写死，可以后续优化
+                        0,
+                        false,
+                        0,
+                        0,
+                        0,
+                        0,
                         true,   // binary
-                        compensationBlocks  // 传入补偿数据
+                        voronoiCompensationData  // 🔑 关键：传入Voronoi补偿数据
                     )
 
-                    console.log(`[AI] 补偿STL生成完成！前端预览已更新为补偿后的STL`)
+                    console.log(`[AI] Voronoi补偿STL生成完成！前端预览已更新`)
 
                 } catch (error) {
-                    console.error(`[AI] 补偿STL生成失败:`, error)
+                    console.error(`[AI] Voronoi补偿STL生成失败:`, error)
                 }
             } else {
-                console.log(`[AI] 无需要补偿的点，保持原始STL`)
+                console.log(`[AI] 无需要补偿的Voronoi区域，保持原始STL`)
             }
+
+
+
 
             // 修改progress message
             progressCallback?.({
                 stage: 'completed',
-                message: `AI预测+补偿STL生成完成！`,
+                message: `AI预测+Voronoi补偿STL生成完成！`,
                 progress: 100
             })
 
@@ -329,6 +296,106 @@ export class AIPredictionService {
 
             throw error
         }
+    }
+    /**
+     * 🆕 新增方法：收集Voronoi补偿数据
+     */
+    private static async collectVoronoiCompensationData(
+        edgeResults: EdgeDetectionResult[],
+        allResults: PredictionResult[],
+        availableElevations: number[],
+        precision: string
+    ): Promise<VoronoiCompensationData[]> {
+
+        const voronoiCompensationData: VoronoiCompensationData[] = []
+
+        // 遍历每个elevation
+        for (const edgeResult of edgeResults) {
+            const elevation = edgeResult.elevation
+
+            if (edgeResult.shapes.length === 0) continue
+
+            console.log(`[AI] 收集 Elevation ${elevation} 的Voronoi补偿数据...`)
+
+            // 1. 获取当前elevation的画布
+            const canvas = SlicerService.getSlice(elevation)
+            if (!canvas) continue
+
+            // 2. 收集当前elevation的所有有效点和补偿值
+            const elevationValidPoints: Array<{x: number, y: number, compensation: number}> = []
+
+            allResults.forEach(result => {
+                // 检查该点在哪个形状内
+                for (let shapeIndex = 0; shapeIndex < edgeResult.shapes.length; shapeIndex++) {
+                    if (EdgeDetectionService.isPointInShape(result.x, result.y, edgeResult.shapes[shapeIndex])) {
+                        const shapeHeights = this.shapeHeightData.get(elevation)
+                        if (shapeHeights && shapeHeights[shapeIndex] !== undefined) {
+                            // 计算补偿值：形状高度 × (预测值 - 1)
+                            const compensation = shapeHeights[shapeIndex] * (result.prediction - 1)
+                            const compensationCeiled = Math.ceil(Math.abs(compensation))
+
+                            if (compensationCeiled > 0) {  // 只处理正补偿
+                                elevationValidPoints.push({
+                                    x: result.x,
+                                    y: result.y,
+                                    compensation: compensationCeiled
+                                })
+                            }
+                        }
+                        break  // 找到形状后退出循环
+                    }
+                }
+            })
+
+            if (elevationValidPoints.length === 0) continue
+
+            // 3. 为每个形状进行Voronoi划分
+            const allVoronoiRegions: VoronoiCompensationRegion[] = []
+
+            edgeResult.shapes.forEach((shape, shapeIndex) => {
+                // 筛选当前形状内的点
+                const shapePoints = elevationValidPoints.filter(point =>
+                    EdgeDetectionService.isPointInShape(point.x, point.y, shape)
+                )
+
+                if (shapePoints.length === 0) return
+
+                console.log(`[AI] 形状${shapeIndex}: ${shapePoints.length}个补偿点`)
+
+                // 🔑 关键：进行Voronoi划分
+                const voronoiCells = VoronoiService.divideShape(
+                    shapePoints,
+                    shape,
+                    canvas.width,
+                    canvas.height
+                )
+
+                // 转换为补偿数据格式
+                voronoiCells.forEach(cell => {
+                    allVoronoiRegions.push({
+                        polygon: cell.polygon,
+                        compensation: cell.compensation,
+                        seedPoint: cell.seedPoint,
+                        canvasHeight: canvas.height  // 添加画布高度
+                    })
+                })
+            })
+
+            // 4. 保存当前elevation的所有Voronoi区域
+            if (allVoronoiRegions.length > 0) {
+                voronoiCompensationData.push({
+                    elevation: elevation,
+                    regions: allVoronoiRegions
+                })
+
+                console.log(`[AI] Elevation ${elevation}: 收集到${allVoronoiRegions.length}个Voronoi补偿区域`)
+            }
+        }
+
+        const totalRegions = voronoiCompensationData.reduce((sum, data) => sum + data.regions.length, 0)
+        console.log(`[AI] 总计收集到 ${totalRegions} 个Voronoi补偿区域`)
+
+        return voronoiCompensationData
     }
     /**
      * 新增：生成所有elevation的Voronoi可视化

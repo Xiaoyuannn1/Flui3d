@@ -29,6 +29,8 @@ import { InletOutlet } from "@/library/inletOutlet";
 import { buildRequestBody } from "@/library/utilities/payloadBuilder";
 import { useMoudleStore } from "./module";
 import { CompensationBlock } from '@/lib/stl-generator/builder/shapes/compensation'
+import { VoronoiCompensationData } from '@/lib/stl-generator/builder/shapes/voronoiCompensation'
+
 
 
 const sweepingFlag = (a: number[], b: number[], p: number[]) => {
@@ -476,7 +478,7 @@ export const useContentStore = defineStore("content", {
         localCompMax: number,
         maxAt: number,
         binary: boolean,
-        compensationData?: CompensationBlock[]  // 新增参数
+        voronoiCompensationData?: VoronoiCompensationData[]  // 改为Voronoi补偿数据
     ) {
       this.stlLoadingState = STLLoadingState.Loading;
 
@@ -494,7 +496,7 @@ export const useContentStore = defineStore("content", {
 
         const chipJSON = JSON.parse(chipJSONString);
         // 关键修改：传入补偿数据
-        this.stlData = await generateStlInBrowser(chipJSON, compensationData);
+        this.stlData = await generateStlInBrowser(chipJSON, voronoiCompensationData);
 
 
         // 检查数据内容

@@ -6,13 +6,12 @@ import { buildLine } from './builder/shapes/line'
 import { buildPolygon } from './builder/shapes/polygon'
 import { buildCurve   } from './builder/shapes/curve'
 import { merge } from './builder/boolean'
-//import { writeStl } from './exporter'
-//import { readDesignJson } from './parser/jsonParser'
 import { cuboid } from '@jscad/modeling/src/primitives/index'
 import { buildChamfer } from './builder/shapes/chamfer'
 import { serialize } from '@jscad/stl-serializer'
 
 import { buildAllCompensationBlocks, CompensationBlock } from './builder/shapes/compensation'
+import { buildAllVoronoiCompensation, VoronoiCompensationData } from './builder/shapes/voronoiCompensation'
 
 
 // export async function generateStl(jsonPath: string, outPath: string) {
@@ -101,7 +100,7 @@ import { buildAllCompensationBlocks, CompensationBlock } from './builder/shapes/
 // 在现有代码末尾添加这个函数
 export async function generateStlInBrowser(
     chipJSON: ChipJSON,
-    compensationData?: CompensationBlock[]
+    voronoiCompensationData?: VoronoiCompensationData[]
 ): Promise<ArrayBuffer> {
     // 这个函数的作用：接收JSON对象，返回STL数据（不涉及文件操作）
     const precKey = chipJSON.general.precision ?? 'Medium'
@@ -176,22 +175,23 @@ export async function generateStlInBrowser(
         }
     }
 
-    // 新增：处理补偿结构
-    if (compensationData && compensationData.length > 0) {
-        console.log(`[STL] 开始添加 ${compensationData.length} 个补偿结构...`)
+    // 修改补偿结构处理部分
+    if (voronoiCompensationData && voronoiCompensationData.length > 0) {
+        const totalRegions = voronoiCompensationData.reduce((sum, data) => sum + data.regions.length, 0)
+        console.log(`[STL] 开始添加 ${totalRegions} 个Voronoi补偿结构...`)
 
-        const compensationStructures = buildAllCompensationBlocks(compensationData)
+        const compensationStructures = buildAllVoronoiCompensation(voronoiCompensationData)
 
-        // 将每个补偿结构与主模型合并（并集操作）
+        // 与主模型合并（减法操作，向下挖空）
         compensationStructures.forEach((structure, index) => {
-            model = merge(model, structure, true)
+            model = merge(model, structure, true)  // true = 减法/挖空
 
             if ((index + 1) % 50 === 0) {
-                console.log(`[STL] 已合并补偿结构: ${index + 1}/${compensationStructures.length}`)
+                console.log(`[STL] 已合并Voronoi补偿: ${index + 1}/${compensationStructures.length}`)
             }
         })
 
-        console.log(`[STL] 补偿结构添加完成，STL已更新`)
+        console.log(`[STL] Voronoi补偿结构添加完成，STL已更新`)
     }
 
     // 简化的序列化部分：
