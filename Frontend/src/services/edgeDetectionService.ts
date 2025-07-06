@@ -20,9 +20,9 @@ export interface EdgeDetectionResult {
 }
 
 export class EdgeDetectionService {
-
+    // Main edge detection pipeline using D3 contour detection
     static detectEdges(canvas: HTMLCanvasElement, elevation: number): EdgeDetectionResult {
-        console.log(`[EdgeDetection] 开始处理 Elevation ${elevation}`)
+        console.log(`[EdgeDetection] Processing elevation ${elevation}`)
 
         const ctx = canvas.getContext('2d')!
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
@@ -39,12 +39,11 @@ export class EdgeDetectionService {
 
         const shapes = this.combineContours(blackContours, whiteContours, canvas.width, canvas.height)
 
-        console.log(`[EdgeDetection] Elevation ${elevation}: 检测到 ${shapes.length} 个复合形状`)
+        console.log(`[EdgeDetection] Elevation ${elevation}: detected ${shapes.length} composite shapes`)
         shapes.forEach((shape, idx) => {
-            console.log(`[EdgeDetection]   形状${idx}: 外轮廓${shape.outer.length}点, 内孔${shape.holes.length}个, 净面积${shape.area.toFixed(0)}`)
+            console.log(`[EdgeDetection]   Shape ${idx}: outer contour ${shape.outer.length} points, ${shape.holes.length} holes, net area ${shape.area.toFixed(0)}`)
         })
 
-        // 生成可视化图
         this.generateContourVisualization(canvas, shapes, elevation)
 
         return {
@@ -54,6 +53,7 @@ export class EdgeDetectionService {
         }
     }
 
+    // Generate visualization overlay showing detected contours
     private static generateContourVisualization(
         originalCanvas: HTMLCanvasElement,
         shapes: Shape[],
@@ -64,17 +64,15 @@ export class EdgeDetectionService {
         vizCanvas.height = originalCanvas.height
         const ctx = vizCanvas.getContext('2d')!
 
-        // 绘制背景
         ctx.globalAlpha = 0.3
         ctx.drawImage(originalCanvas, 0, 0)
         ctx.globalAlpha = 1.0
 
-        // 绘制轮廓
         shapes.forEach((shape, shapeIndex) => {
             const colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF']
             const color = colors[shapeIndex % colors.length]
 
-            // 外轮廓
+            // outer contour
             ctx.strokeStyle = color
             ctx.lineWidth = 3
             ctx.beginPath()
@@ -88,7 +86,7 @@ export class EdgeDetectionService {
             }
             ctx.stroke()
 
-            // 外轮廓点
+            // Mark outer contour points
             ctx.fillStyle = color
             shape.outer.forEach(point => {
                 ctx.beginPath()
@@ -96,7 +94,7 @@ export class EdgeDetectionService {
                 ctx.fill()
             })
 
-            // 内部holes
+            // holes
             shape.holes.forEach((hole) => {
                 ctx.strokeStyle = color
                 ctx.lineWidth = 2
@@ -121,7 +119,7 @@ export class EdgeDetectionService {
                 })
             })
 
-            // 形状标签
+            // Add shape labels
             if (shape.outer.length > 0) {
                 const centerX = shape.outer.reduce((sum, p) => sum + p.x, 0) / shape.outer.length
                 const centerY = shape.outer.reduce((sum, p) => sum + p.y, 0) / shape.outer.length
@@ -133,17 +131,16 @@ export class EdgeDetectionService {
             }
         })
 
-        // 标题
         ctx.fillStyle = '#000000'
         ctx.font = 'bold 20px Arial'
         ctx.fillText(`Elevation ${elevation} - Contour Detection`, 10, 30)
         ctx.font = '14px Arial'
         ctx.fillText(`${shapes.length} shapes detected`, 10, 50)
 
-        // 下载
         this.downloadVisualization(vizCanvas, elevation)
     }
 
+    // Download the contour visualization as a PNG image
     private static downloadVisualization(canvas: HTMLCanvasElement, elevation: number): void {
         canvas.toBlob((blob) => {
             if (blob) {
@@ -162,13 +159,13 @@ export class EdgeDetectionService {
 
                 URL.revokeObjectURL(url)
 
-                console.log(`[EdgeDetection] 轮廓可视化图已下载: ${filename}`)
+                console.log(`[EdgeDetection] Contour visualization downloaded: ${filename}`)
             }
         }, 'image/png')
     }
 
-    // ... 其他所有方法保持不变 ...
 
+    /// Convert image data to value array for contour detection
     private static imageToValues(imageData: ImageData, width: number, height: number, invert = false): number[] {
         const values: number[] = []
         const data = imageData.data
@@ -189,6 +186,7 @@ export class EdgeDetectionService {
         return values
     }
 
+    // Combine black and white contours into composite shapes
     private static combineContours(blackContours: any[], whiteContours: any[], canvasWidth: number, canvasHeight: number): Shape[] {
         const shapes: Shape[] = []
 
@@ -219,6 +217,7 @@ export class EdgeDetectionService {
         return shapes
     }
 
+    // Parse D3 contour data into Shape objects
     private static parseD3Contours(contourData: any[], canvasWidth: number, canvasHeight: number, type: 'black' | 'white'): Shape[] {
         const shapes: Shape[] = []
 
@@ -260,6 +259,7 @@ export class EdgeDetectionService {
         return shapes
     }
 
+    // Check if the shape is likely an image border
     private static isImageBorderShape(points: EdgePoint[], width: number, height: number): boolean {
         const tolerance = 5
         const hasTopEdge = points.some(p => p.y <= tolerance)
@@ -270,6 +270,7 @@ export class EdgeDetectionService {
         return edgeCount >= 3
     }
 
+    // Check if one shape is completely inside another
     private static isShapeInsideShape(innerShape: EdgePoint[], outerShape: EdgePoint[]): boolean {
         const testPoints = [
             innerShape[0],
@@ -284,6 +285,7 @@ export class EdgeDetectionService {
         )
     }
 
+    // Calculate polygon area
     private static calculatePolygonArea(points: EdgePoint[]): number {
         if (points.length < 3) return 0
 

@@ -1,9 +1,7 @@
 import JSZip from 'jszip'
 
 export class DownloadService {
-    /**
-     * 下载多个文件为ZIP
-     */
+    //打包下载zip
     static async downloadSlicesAsZip(
         sliceImages: Blob[],
         sliceInfo: { zValue: number; filename: string }[],
@@ -17,16 +15,12 @@ export class DownloadService {
             zip.file(filename, blob)
         })
 
-        // 生成ZIP文件
         const zipBlob = await zip.generateAsync({ type: 'blob' })
 
-        // 触发下载
         this.downloadBlob(zipBlob, zipFilename)
     }
 
-    /**
-     * 下载单个Blob文件
-     */
+
     static downloadBlob(blob: Blob, filename: string): void {
         const url = URL.createObjectURL(blob)
         const link = document.createElement('a')

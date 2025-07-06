@@ -11,64 +11,53 @@ export interface VoronoiCompensationData {
 }
 
 export interface VoronoiCompensationRegion {
-    polygon: { x: number, y: number }[]  // Voronoi区域边界（像素坐标）
-    compensation: number                 // 补偿高度（μm）
-    seedPoint: { x: number, y: number } // 种子点（用于调试）
-    canvasHeight: number                 // 画布高度（用于Y轴翻转）
+    polygon: { x: number, y: number }[]
+    compensation: number
+    seedPoint: { x: number, y: number }
+    canvasHeight: number
 }
-/**
- * 构建单个Voronoi补偿区域
- * 关键：向下拉伸，坐标×10转换
- */
+
+// Build single Voronoi compensation region
 export function buildVoronoiCompensationRegion(region: VoronoiCompensationRegion, elevation: number): any {
     const { polygon, compensation, canvasHeight } = region
 
     if (polygon.length < 3 || compensation <= 0) {
-        return null  // 无效多边形或负补偿
+        return null
     }
 
-    // 1. 像素坐标转换为STL坐标（×10）
     const stlPoints: Vec2[] = polygon.map(point => [
-        point.x * 10,  // 像素 → STL坐标
+        point.x * 10,
         (region.canvasHeight - point.y) * 10  // Y轴翻转
     ])
 
-    // 2. 检查并修正点的顺序（逆时针）
     const correctedPoints = ensureCounterClockwise(stlPoints)
 
-    // 3. 创建2D多边形
+
     let poly2D
     try {
         poly2D = fromPoints(correctedPoints)
     } catch (error) {
-        console.warn('[VoronoiComp] 创建2D多边形失败:', error)
+        console.warn('[VoronoiComp] Failed to create 2D polygon:', error)
         return null
     }
 
-    // 4. 向下拉伸（关键差异：负高度）
+
     let solid = extrudeLinear({ height: compensation }, poly2D)
 
-    // 5. 平移到正确的elevation，并向下偏移
-    // 重要：从elevation开始向下延伸compensation的距离
     solid = translate([0, 0, elevation - compensation], solid)
-
-    console.log(`[VoronoiComp] 区域: ${polygon.length}边形, STL坐标范围${correctedPoints[0][0].toFixed(0)}-${correctedPoints[correctedPoints.length-1][0].toFixed(0)}, 向下${compensation}μm`)
+    //console.log(`[VoronoiComp] Region: ${polygon.length}-sided polygon, STL coordinate range ${correctedPoints[0][0].toFixed(0)}-${correctedPoints[correctedPoints.length-1][0].toFixed(0)}, downward ${compensation}μm`)
 
     return solid
 }
 
-/**
- * 确保点序列为逆时针（JSCAD要求）
- */
+//Ensure points counterclockwise
 function ensureCounterClockwise(points: Vec2[]): Vec2[] {
-    // 计算有符号面积
     let signedArea = 0
     for (let i = 0; i < points.length; i++) {
         const j = (i + 1) % points.length
         signedArea += (points[j][0] - points[i][0]) * (points[j][1] + points[i][1])
     }
 
-    // 如果面积为负（顺时针），则反转
     if (signedArea > 0) {
         return [...points].reverse()
     }
@@ -76,19 +65,16 @@ function ensureCounterClockwise(points: Vec2[]): Vec2[] {
     return points
 }
 
-/**
- * 批量构建所有Voronoi补偿结构
- */
+//Batch build all Voronoi compensation structures
 export function buildAllVoronoiCompensation(data: VoronoiCompensationData[]): any[] {
     const compensationStructures: any[] = []
     let totalRegions = 0
 
-    console.log(`[VoronoiComp] 开始构建 ${data.length} 个elevation的Voronoi补偿...`)
+    console.log(`[VoronoiComp] Starting to build Voronoi compensation for ${data.length} elevations...`)
 
     data.forEach((elevationData, elevIndex) => {
         const { elevation, regions } = elevationData
-
-        console.log(`[VoronoiComp] Elevation ${elevation}: 处理${regions.length}个区域`)
+        console.log(`[VoronoiComp] Elevation ${elevation}: processing ${regions.length} regions`)
 
         regions.forEach((region, regionIndex) => {
             const structure = buildVoronoiCompensationRegion(region, elevation)
@@ -96,14 +82,13 @@ export function buildAllVoronoiCompensation(data: VoronoiCompensationData[]): an
                 compensationStructures.push(structure)
                 totalRegions++
             }
-
-            // 每50个输出进度
-            if ((totalRegions) % 50 === 0) {
-                console.log(`[VoronoiComp] 已构建: ${totalRegions} 个区域`)
+            // Output progress every 100 regions
+            if ((totalRegions) % 100 === 0) {
+                console.log(`[VoronoiComp] Built: ${totalRegions} regions`)
             }
         })
     })
 
-    console.log(`[VoronoiComp] 构建完成: ${compensationStructures.length} 个Voronoi补偿结构`)
+    console.log(`[VoronoiComp] Build completed: ${compensationStructures.length} Voronoi compensation structures`)
     return compensationStructures
 }

@@ -97,12 +97,12 @@ import { buildAllVoronoiCompensation, VoronoiCompensationData } from './builder/
 //     return await writeStl(model, outPath)
 // }
 
-// 在现有代码末尾添加这个函数
+
 export async function generateStlInBrowser(
     chipJSON: ChipJSON,
     voronoiCompensationData?: VoronoiCompensationData[]
 ): Promise<ArrayBuffer> {
-    // 这个函数的作用：接收JSON对象，返回STL数据（不涉及文件操作）
+    // 接收JSON对象，返回STL数据
     const precKey = chipJSON.general.precision ?? 'Medium'
     const segments = precisionMap[precKey]
 
@@ -112,7 +112,7 @@ export async function generateStlInBrowser(
         z: chipJSON.general.thickness
     }
 
-    // 创建基础芯片立方体（复制你现有的逻辑）
+    // 创建基础芯片立方体
     let model = cuboid({
         size: [chipSize.x, chipSize.y, chipSize.z],
         center: [chipSize.x/2, chipSize.y/2, chipSize.z/2]
@@ -147,7 +147,7 @@ export async function generateStlInBrowser(
         model = merge(model, csg, shouldSubtract)
     }
 
-    // 遍历所有层（完全复制你现有的循环）
+    // 遍历所有层
     for (const layer of chipJSON.layers) {
         if (layer.compensation) {
             const compensationShape: PolygonShape = {
@@ -175,23 +175,32 @@ export async function generateStlInBrowser(
         }
     }
 
-    // 修改补偿结构处理部分
     if (voronoiCompensationData && voronoiCompensationData.length > 0) {
         const totalRegions = voronoiCompensationData.reduce((sum, data) => sum + data.regions.length, 0)
-        console.log(`[STL] 开始添加 ${totalRegions} 个Voronoi补偿结构...`)
+        console.log(`[STL] Starting to add ${totalRegions} Voronoi compensation structures...`)
 
         const compensationStructures = buildAllVoronoiCompensation(voronoiCompensationData)
 
-        // 与主模型合并（减法操作，向下挖空）
-        compensationStructures.forEach((structure, index) => {
-            model = merge(model, structure, true)  // true = 减法/挖空
+        if (compensationStructures.length === 0) {
+            console.log(`[STL] No valid compensation structures, skipping`)
+        } else if (compensationStructures.length === 1) {
+            // Single compensation structure, merge directly
+            model = merge(model, compensationStructures[0], true)
+        } else {
+            // Multiple compensation structures: batch optimization strategy
 
-            if ((index + 1) % 50 === 0) {
-                console.log(`[STL] 已合并Voronoi补偿: ${index + 1}/${compensationStructures.length}`)
+            let combinedCompensation = compensationStructures[0]
+            for (let i = 1; i < compensationStructures.length; i++) {
+                combinedCompensation = merge(combinedCompensation, compensationStructures[i], false) // union merge
+
+                if ((i + 1) % 100 === 0) {
+                    console.log(`[STL] Compensation structure merge progress: ${i + 1}/${compensationStructures.length}`)
+                }
             }
-        })
+            model = merge(model, combinedCompensation, true) // one-time subtraction
+        }
 
-        console.log(`[STL] Voronoi补偿结构添加完成，STL已更新`)
+        console.log(`[STL] Voronoi compensation structure addition completed, STL updated`)
     }
 
     // 简化的序列化部分：

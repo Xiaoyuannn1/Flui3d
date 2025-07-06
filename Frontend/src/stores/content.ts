@@ -478,7 +478,7 @@ export const useContentStore = defineStore("content", {
         localCompMax: number,
         maxAt: number,
         binary: boolean,
-        voronoiCompensationData?: VoronoiCompensationData[]  // 改为Voronoi补偿数据
+        voronoiCompensationData?: VoronoiCompensationData[]
     ) {
       this.stlLoadingState = STLLoadingState.Loading;
 
@@ -495,11 +495,9 @@ export const useContentStore = defineStore("content", {
         );
 
         const chipJSON = JSON.parse(chipJSONString);
-        // 关键修改：传入补偿数据
         this.stlData = await generateStlInBrowser(chipJSON, voronoiCompensationData);
 
 
-        // 检查数据内容
         const uint8Array = new Uint8Array(this.stlData)
         this.stlLoadingState = STLLoadingState.Succeed;
 

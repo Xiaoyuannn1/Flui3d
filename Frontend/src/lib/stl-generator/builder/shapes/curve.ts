@@ -7,9 +7,8 @@ import { translate, rotate }     from '@jscad/modeling/src/operations/transforms
 import type { Geom2, Geom3 } from '@jscad/modeling/src/geometries/types'
 import { CurveShape }     from '../../model/types'
 
-/**
- * 计算多边形的有符号面积，< 0 表示顺时针，> 0 表示逆时针
- */
+
+// Calculate signed area of polygon: < 0 clockwise, > 0 counterclockwise
 function shoelace(pts: [number, number][]): number {
     let sum = 0
     for (let i = 0; i < pts.length; i++) {
@@ -20,9 +19,7 @@ function shoelace(pts: [number, number][]): number {
     return sum / 2
 }
 
-/**
- * 检查是否为桥结构curve
- */
+// Check if curve is bridge structure (has Z)
 function isBridgeCurve(shape: CurveShape): boolean {
     const { start, end, center } = shape
 
@@ -34,20 +31,18 @@ function isBridgeCurve(shape: CurveShape): boolean {
     return maxZDiff > 1e-6
 }
 
-/**
- * 构建平面Curve（原有逻辑，完全不变）
- */
+// Build flat curve
 function buildFlatCurve(shape: CurveShape, precision: number): Geom3 {
     const { start, end, center, tangent, width, height } = shape
 
-    // 1. 计算圆弧参数
+    // Calculate arc parameters
     const rx = start.x - center.x, ry = start.y - center.y
     const r0 = Math.hypot(rx, ry)
     if (r0 < 1e-6) return null as any
     const ang0 = Math.atan2(ry, rx)
     let ang1 = Math.atan2(end.y - center.y, end.x - center.x)
 
-    // 2. 判定顺/逆时针
+    // Determine clockwise/counterclockwise direction
     const tan = tangent ?? { x:-ry, y:rx, z:0 }
     const crossZ = rx * tan.y - ry * tan.x
     if (crossZ > 0) { if (ang1 <= ang0) ang1 += 2*Math.PI }
@@ -55,12 +50,12 @@ function buildFlatCurve(shape: CurveShape, precision: number): Geom3 {
     let sweep = ang1 - ang0
     if (Math.abs(sweep) > Math.PI) sweep += sweep>0 ? -2*Math.PI : 2*Math.PI
 
-    // 3. 采样点数
+    // Calculate sample points
     const full = Math.PI*2
     const frac = Math.abs(sweep) / full
     const N = Math.max(8, Math.ceil(precision * frac * 1.2))
 
-    // 4. 构造环扇形多边形（外弧 + 内弧）
+    // Build ring sector polygon (outer + inner arc)
     const outer: [number,number][] = []
     const inner: [number,number][] = []
     const rOut = r0 + width/2, rIn = r0 - width/2
@@ -70,7 +65,7 @@ function buildFlatCurve(shape: CurveShape, precision: number): Geom3 {
         inner.unshift([ center.x + rIn  * Math.cos(θ), center.y + rIn  * Math.sin(θ) ])
     }
 
-    // 5. 组合点并检查方向
+    // Combine points and check direction
     let pts2D = outer.concat(inner) as [number,number][]
     if (shoelace(pts2D) < 0) {
         pts2D = pts2D.reverse()
@@ -83,15 +78,11 @@ function buildFlatCurve(shape: CurveShape, precision: number): Geom3 {
     return solid
 }
 
-/**
- * 构建桥结构Curve - 统一垂直平面方向
- */
+// Build bridge curve with unified vertical plane approach
 function buildBridgeCurve(shape: CurveShape, precision: number): Geom3 {
-    console.log('Building bridge curve - unified vertical plane approach')
-
     const { start, end, center, tangent, width, height } = shape
 
-    // 1. 使用tangent向量确定统一的垂直平面方向（而不是start→end）
+
     if (!tangent) {
         console.error('Bridge curve requires tangent vector')
         return null as any
@@ -103,16 +94,14 @@ function buildBridgeCurve(shape: CurveShape, precision: number): Geom3 {
         return null as any
     }
 
-    // 2. 建立统一的垂直平面坐标系（基于tangent）
-    // u轴：沿tangent方向（标准化）
+    // Build coordinate system for vertical plane containing the 3D arc
     const uAxisX = tangent.x / tangentLength
     const uAxisY = tangent.y / tangentLength
     const uAxisZ = 0
 
-    // v轴：沿Z轴方向
     const vAxisX = 0, vAxisY = 0, vAxisZ = 1
 
-    // w轴：垂直平面的法向量（u × v）
+    // Normal to the vertical plane
     const wAxisX = uAxisY * vAxisZ - uAxisZ * vAxisY  // = uAxisY
     const wAxisY = uAxisZ * vAxisX - uAxisX * vAxisZ  // = -uAxisX
     const wAxisZ = uAxisX * vAxisY - uAxisY * vAxisX  // = 0
@@ -127,7 +116,7 @@ function buildBridgeCurve(shape: CurveShape, precision: number): Geom3 {
         wAxis: `(${wAxisX.toFixed(3)}, ${wAxisY.toFixed(3)}, ${wAxisZ})`
     })
 
-    // 3. 将3D点转换到垂直平面的2D坐标系
+    // Project 3D points onto the vertical plane
     function to2D(point: {x: number, y: number, z: number}) {
         // 相对于start的偏移
         const relX = point.x - start.x
@@ -150,7 +139,7 @@ function buildBridgeCurve(shape: CurveShape, precision: number): Geom3 {
         center2D: `(${center2D.u.toFixed(1)}, ${center2D.v.toFixed(1)})`
     })
 
-    // 4. 在2D垂直平面内计算圆弧参数
+    // Calculate arc in 2D projected plane
     const ru = start2D.u - center2D.u
     const rv = start2D.v - center2D.v
     const radius = Math.sqrt(ru * ru + rv * rv)
@@ -163,7 +152,7 @@ function buildBridgeCurve(shape: CurveShape, precision: number): Geom3 {
     const ang0 = Math.atan2(rv, ru)
     const ang1 = Math.atan2(end2D.v - center2D.v, end2D.u - center2D.u)
 
-    // 5. 角度扫掠计算
+    // 扫掠计算
     let sweep = ang1 - ang0
     if (Math.abs(sweep) > Math.PI) {
         sweep += sweep > 0 ? -2 * Math.PI : 2 * Math.PI
@@ -174,7 +163,7 @@ function buildBridgeCurve(shape: CurveShape, precision: number): Geom3 {
         sweep: (sweep * 180 / Math.PI).toFixed(1) + '°'
     })
 
-    // 6. 在2D垂直平面内构造环扇形
+    // Generate ring profile in 2D plane
     const frac = Math.abs(sweep) / (Math.PI * 2)
     const N = Math.max(8, Math.ceil(precision * frac * 1.2))
 
@@ -193,29 +182,25 @@ function buildBridgeCurve(shape: CurveShape, precision: number): Geom3 {
         inner.unshift([u_inner, v_inner])
     }
 
-    // 7. 组合点并检查方向
     let pts2D = outer.concat(inner) as [number,number][]
     if (shoelace(pts2D) < 0) {
         pts2D = pts2D.reverse()
     }
 
-    // 8. 创建2D形状并沿法向量拉伸
     const shape2d: Geom2 = fromPoints(pts2D)
 
-    // 关键：沿w轴（法向量）拉伸，给通道宽度
     let solid: Geom3 = extrudeLinear({ height: height }, shape2d)
 
-    // 9.进行90°旋转
+    // 90°
     solid = rotate([Math.PI/2, 0, 0], solid)
 
-    // 10. 旋转到正确的垂直平面方向（基于tangent统一方向）
+    // Transform from 2D plane to 3D space
     const planeAngle = Math.atan2(uAxisY, uAxisX)  // tangent的角度
     if (Math.abs(planeAngle) > 1e-6) {
         solid = rotate([0, 0, planeAngle], solid)
         console.log('Applied unified plane rotation:', (planeAngle * 180 / Math.PI).toFixed(1) + '°')
     }
 
-    // 11. 平移到起点位置
     solid = translate([start.x- X_bias, start.y-Y_bias, start.z], solid)
 
     return solid
@@ -226,10 +211,8 @@ export function buildCurve(shape: CurveShape, precision: number): Geom3 {
     if (width <= 0 || height <= 0) return null as any
 
     if (isBridgeCurve(shape)) {
-        console.log('Detected bridge curve')
         return buildBridgeCurve(shape, precision)
     } else {
-        console.log('Using flat curve')
         return buildFlatCurve(shape, precision)
     }
 }

@@ -191,17 +191,14 @@
                 />
                 <label class="form-check-label" for="aiEPC">AI</label>
               </div>
-              <!-- 🔥 在这里添加AI状态显示区域 -->
               <div v-if="aiChecked" class="mt-2 p-2 border rounded" style="background-color: #f8f9fa;">
-                <!-- AI模型状态 -->
                 <div class="d-flex align-items-center mb-1">
-                  <small class="text-muted">AI模型状态:</small>
+                  <small class="text-muted">AI Model Status:</small>
                   <span class="ms-2 badge" :class="aiModelLoaded ? 'bg-success' : 'bg-secondary'">
-      {{ aiModelLoaded ? '已加载' : '未加载' }}
+      {{ aiModelLoaded ? 'Loaded' : 'Not Loaded' }}
     </span>
                 </div>
 
-                <!-- AI处理进度 -->
                 <div v-if="aiProgress" class="mb-1">
                   <small class="text-muted">{{ aiProgress.message }}</small>
                   <div v-if="aiProgress.progress !== undefined" class="progress mt-1" style="height: 4px;">
@@ -209,15 +206,13 @@
                   </div>
                 </div>
 
-                <!-- AI错误信息 -->
                 <div v-if="aiError" class="alert alert-danger py-1 px-2 mb-1" style="font-size: 0.8em;">
                   {{ aiError }}
                 </div>
 
-                <!-- AI处理状态 -->
                 <div v-if="aiProcessing" class="d-flex align-items-center">
                   <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-                  <small class="text-primary">AI正在处理中...</small>
+                  <small class="text-primary">AI Processing...</small>
                 </div>
               </div>
             </div>
@@ -254,7 +249,6 @@ interface AIPredictionProgress {
   message: string
   progress?: number
 }
-import { runWebGLTest } from '@/services/webglTest'
 import { buildRequestBody } from '@/library/utilities/payloadBuilder'
 
 export default defineComponent({
@@ -275,18 +269,16 @@ export default defineComponent({
     const isBinary = ref(true);
 
 
-    //  新增：AI相关的响应式变量
-    const aiModelLoaded = ref(false);           // AI模型是否已加载
-    const aiProcessing = ref(false);            // AI是否正在处理
-    const aiProgress = ref<AIPredictionProgress | null>(null); // AI处理进度
-    const aiError = ref<string | null>(null);  // AI错误信息
+    // AI-related reactive variables
+    const aiModelLoaded = ref(false);           // Whether AI model is loaded
+    const aiProcessing = ref(false);            // Whether AI is processing
+    const aiProgress = ref<AIPredictionProgress | null>(null); // AI processing progress
+    const aiError = ref<string | null>(null);  // AI error information
 
-    // 在setup()函数内部添加
     onUnmounted(() => {
       // 清理AI资源
       if (aiModelLoaded.value) {
         AIPredictionService.cleanup()
-        console.log('[UI] 🧹 组件卸载，已清理AI资源')
       }
     })
 
@@ -317,9 +309,9 @@ export default defineComponent({
         if (contentStore.stlLoadingState === 2) {
           showStlPreview.value = true
 
-          // 4. 🔥 关键修正：如果勾选AI，主动执行切片操作
+          // 4.  关键修正：如果勾选AI，主动执行切片操作
           if (aiChecked.value && aiModelLoaded.value) {
-            //console.log('[UI] 🔄 为AI预测执行切片操作...')
+            const startTime = performance.now()  // 添加这行
 
             // 执行切片操作（这会自动保存slice_0和slice_100）
             await SlicerService.generateSlices(
@@ -331,53 +323,51 @@ export default defineComponent({
             // 然后执行AI预测
             setTimeout(async () => {
               await performAIPrediction()
+              // 添加总时长统计
+              const endTime = performance.now()
+              const totalTime = ((endTime - startTime) / 1000).toFixed(2)
+              console.log(`[TIMER] Total AI compensation process time: ${totalTime} seconds`)
+
             }, 100)
           }
         }
 
       } catch (error: any) {
-        console.error('[UI] 流程失败:', error)
-        alert(`生成失败: ${error.message}`)
+        console.error('[UI] Process failed:', error)
+        alert(`Generation failed: ${error.message}`)
       }
     }
 
-    //  新增：AI模型初始化函数
     const initializeAIModel = async () => {
       if (aiModelLoaded.value) {
-        console.log('[UI] AI模型已加载，跳过初始化')
+        console.log('[UI] AI model already loaded, skipping initialization')
         return true
       }
 
       try {
-        //console.log('[UI] 🚀 开始初始化AI模型...')
         aiError.value = null
 
         await AIPredictionService.initialize((progress) => {
           aiProgress.value = progress
-          console.log(`[UI] AI初始化进度: ${progress.message}`)
         })
 
         aiModelLoaded.value = true
-        //console.log('[UI] ✅ AI模型初始化成功!')
         return true
 
       } catch (error: any) {
-        //console.error('[UI] ❌ AI模型初始化失败:', error)
-        aiError.value = `AI模型加载失败: ${error.message}`
+        aiError.value = `AI model loading failed: ${error.message}`
         aiModelLoaded.value = false
         return false
       }
     }
-    //  新增：执行AI预测的函数
-// 新增：执行AI预测的函数
+
     const performAIPrediction = async () => {
       if (!aiChecked.value) {
-        console.log('[UI] AI未勾选，跳过预测')
+        console.log('[UI] AI not checked, skipping prediction')
         return
       }
 
       try {
-        //console.log('[UI] 🤖 开始执行AI预测...')
         aiProcessing.value = true
         aiError.value = null
 
@@ -393,27 +383,16 @@ export default defineComponent({
             maxAt.value
         )
         const chipJSON = JSON.parse(chipJSONString)
-        //console.log('[UI] 📋 JSON数据构建完成，层数:', chipJSON.layers?.length || 0)
 
         // 2. 执行AI预测，传递JSON数据
         const predictions = await AIPredictionService.performPrediction((progress) => {
           aiProgress.value = progress
-          console.log(`[UI] ${progress.message}`)
         }, chipJSON)  // 传递chipJSON
 
-        //console.log('[UI] 🎉 AI预测完成!')
-        //console.log(`[UI] 📊 获得 ${predictions.length} 个预测结果`)
-
-        // 3. 输出结果汇总
-        //console.log('[UI] 📋 AI预测结果汇总:')
-        // predictions.forEach((result, index) => {
-        //   console.log(`[UI] ${index + 1}. Point(${result.x}, ${result.y}): Z_metric = ${result.prediction.toFixed(6)}`)
-        // })
 
       } catch (error: any) {
-        //console.error('[UI] ❌ AI预测失败:', error)
-        aiError.value = `AI预测失败: ${error.message}`
-        alert(`AI预测失败: ${error.message}`)
+        aiError.value = `AI prediction failed: ${error.message}`
+        alert(`AI prediction failed: ${error.message}`)
 
       } finally {
         aiProcessing.value = false
@@ -421,30 +400,26 @@ export default defineComponent({
       }
     }
 
-    // 新增：执行切片功能
+    // 执行切片功能
     const performSlicing = async () => {
       try {
-
 
         const stlData = contentStore.stlData
         if (!stlData || stlData.byteLength === 0) {
           throw new Error('empty STL data')
         }
 
-
         // 执行切片
         const result = await SlicerService.generateSlices(
             stlData,
-            100.5,    // Z步长
-            10      // 缩放因子
+            100.5,
+            10
         )
 
 
-        // 生成文件名
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
         const zipFilename = `${contentStore.title}_slices_${timestamp}.zip`
 
-        // 下载ZIP文件
         await DownloadService.downloadSlicesAsZip(
             result.sliceImages,
             result.sliceInfo,
@@ -456,34 +431,7 @@ export default defineComponent({
         alert('Slicing failed: ' + error.message)
       }
     }
-    //
-    // const downloadSVGZip = () => {
-    //   const zip = new JSZip();
-    //   const color = "#0d6efd";
-    //   const svgTag = `<svg width="${contentStore.chipLengthX / 10}" height="${
-    //     contentStore.chipLengthY / 10
-    //   }" viewBox="-5 -5 ${contentStore.chipLengthX + 5} ${
-    //     contentStore.chipLengthY + 5
-    //   }" xmlns="http://www.w3.org/2000/svg" fill="${color}" stroke="${color}">`;
-    //
-    //   const chipBoundary = `<rect x="0" y="0" width="${contentStore.chipLengthX}" height="${contentStore.chipLengthY}" fill="none" stroke-width="10" stroke="black"/>`;
-    //   try {
-    //     const svgContent = document.getElementById("svgContent");
-    //     svgContent.childNodes.forEach((layerContent) => {
-    //       const layer = contentStore.layers.get(layerContent.id);
-    //       if (layer) {
-    //         const svgData = `${svgTag}${chipBoundary}${layerContent.innerHTML}</svg>`;
-    //         zip.file(`${layer.label}_${layer.height}.svg`, svgData);
-    //       }
-    //     })
-    //     ;
-    //     zip.generateAsync({ type: "blob" }).then(function (content) {
-    //       saveAs(content, `${contentStore.title}_svg.zip`);
-    //     });
-    //   } catch (err) {
-    //     console.log(err);
-    //   }
-    // };
+
 
     onMounted(() => {
       const myModalEl = document.getElementById("outputOptionModal");

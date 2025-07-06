@@ -19,12 +19,10 @@ declare module '@techstark/opencv-js' {
         MatVector: new () => MatVector
         onRuntimeInitialized?: () => void
 
-        // 常量
         COLOR_RGBA2GRAY: number
         RETR_TREE: number
         CHAIN_APPROX_SIMPLE: number
 
-        // 函数
         imread(canvas: HTMLCanvasElement): Mat
         cvtColor(src: Mat, dst: Mat, code: number): void
         findContours(

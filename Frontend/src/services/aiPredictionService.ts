@@ -1,11 +1,9 @@
 import { aiService, PredictionResult } from './aiService'
 import { ImageProcessor, SamplingPoint } from './imageProcessor'
 import { SlicerService } from './slicerService'
-import { EdgeDetectionService, EdgeDetectionResult, Shape } from './edgeDetectionService'  // 添加 Shape 导入
-import { CompensationBlock } from '@/lib/stl-generator/builder/shapes/compensation'
+import { EdgeDetectionService, EdgeDetectionResult, Shape } from './edgeDetectionService'
 import { useContentStore } from '@/stores/content'
 import { VoronoiService, VoronoiResult } from './voronoiService'
-
 import { VoronoiCompensationData, VoronoiCompensationRegion } from '@/lib/stl-generator/builder/shapes/voronoiCompensation'
 
 
@@ -27,7 +25,7 @@ export class AIPredictionService {
         try {
             progressCallback?.({
                 stage: 'loading',
-                message: '正在加载AI模型...',
+                message: 'Loading AI model...',
                 progress: 0
             })
 
@@ -36,7 +34,7 @@ export class AIPredictionService {
 
             progressCallback?.({
                 stage: 'completed',
-                message: 'AI模型加载完成！',
+                message: 'AI model loaded successfully!',
                 progress: 100
             })
 
@@ -45,52 +43,54 @@ export class AIPredictionService {
 
             progressCallback?.({
                 stage: 'error',
-                message: `AI模型加载失败: ${errorMessage}`
+                message: `Failed to load AI model: ${errorMessage}`
             })
 
             throw error
         }
     }
-
+    /**
+     * Main prediction pipeline: edge detection, shape height analysis, AI prediction, and Voronoi compensation
+     */
     static async performPrediction(
         progressCallback?: (progress: AIPredictionProgress) => void,
         chipJSON?: any
     ): Promise<PredictionResult[]> {
 
         if (!this.isInitialized || !aiService.isReady()) {
-            throw new Error('AI服务未初始化，请先调用initialize()')
+            throw new Error('AI service not initialized, please call initialize() first')
         }
 
         try {
             progressCallback?.({
                 stage: 'processing',
-                message: '正在解析JSON数据...',
+                message: 'Parsing JSON data...',
                 progress: 10
             })
 
-            // 解析elevations和precision
+            // Parse elevations and precision from JSON
             let elevations: number[] = []
             let precision = 'Medium'
 
             if (chipJSON && chipJSON.layers && Array.isArray(chipJSON.layers)) {
                 elevations = chipJSON.layers.map((layer: any) => layer.elevation)
-                console.log(`[AI] 从JSON解析到${elevations.length}个层级:`, elevations)
+                console.log(`[AI] Parsed ${elevations.length} elevations from JSON:`, elevations)
             } else {
                 elevations = [0, 100]
-                console.log(`[AI] 未提供有效JSON，使用默认elevations:`, elevations)
+                console.log(`[AI] No valid JSON provided, using default elevations:`, elevations)
             }
 
             if (chipJSON && chipJSON.general && chipJSON.general.precision) {
                 precision = chipJSON.general.precision
-                console.log(`[AI] 从JSON解析到precision: ${precision}`)
+                console.log(`[AI] Parsed precision from JSON: ${precision}`)
             } else {
-                console.log(`[AI] 未找到precision，使用默认值: ${precision}`)
+                console.log(`[AI] Precision not found, using default: ${precision}`)
             }
 
             const availableElevations = SlicerService.getAvailableElevations()
 
-            // 边缘检测
-            console.log(`[AI]  开始边缘检测 ${elevations.length} 个elevation...`)
+            // Edge detection
+            console.log(`[AI] Starting edge detection for ${elevations.length} elevations...`)
             const edgeResults: EdgeDetectionResult[] = []
 
             for (const elevation of elevations) {
@@ -100,43 +100,42 @@ export class AIPredictionService {
                         const result = EdgeDetectionService.detectEdges(canvas, elevation)
                         edgeResults.push(result)
                     } catch (error) {
-                        console.error(`[EdgeDetection] Elevation ${elevation} 检测失败:`, error)
+                        console.error(`[EdgeDetection] Failed for elevation ${elevation}:`, error)
                     }
                 }
             }
 
-            // 新增：形状高度检测
-            console.log(`[AI]  开始形状高度检测...`)
+            // Shape height detection
+            console.log(`[AI] Starting shape height detection...`)
             await this.detectShapeHeights(edgeResults, availableElevations, precision)
 
-            // 生成采样点
+            // Generate sampling points
             const firstElevation = availableElevations[0]
             const firstCanvas = SlicerService.getSlice(firstElevation)
             if (!firstCanvas) {
-                throw new Error('无法获取切片画布尺寸')
+                throw new Error('Cannot get slice canvas dimensions')
             }
             const allSamplingPoints = ImageProcessor.generateSamplingPoints(firstCanvas.width, firstCanvas.height, precision)
 
             progressCallback?.({
                 stage: 'predicting',
-                message: `开始AI预测...`,
+                message: `Starting AI prediction...`,
                 progress: 30
             })
 
             const allResults: PredictionResult[] = []
             let completedCount = 0
-
-            // AI预测循环
+            // AI prediction loop
             for (let elevationIndex = 0; elevationIndex < elevations.length; elevationIndex++) {
                 const elevation = elevations[elevationIndex]
 
-                // 过滤有效采样点
+                // Filter valid sampling points
                 const edgeResult = edgeResults.find(r => r.elevation === elevation)
                 const validSamplingPoints = this.filterValidSamplingPoints(allSamplingPoints, edgeResult)
 
-                console.log(`[AI] Elevation ${elevation}: 从${allSamplingPoints.length}个点过滤到${validSamplingPoints.length}个有效点`)
+                console.log(`[AI] Elevation ${elevation}: filtered from ${allSamplingPoints.length} to ${validSamplingPoints.length} valid points`)
 
-                // 重新计算总预测次数
+                // Recalculate total predictions
                 const totalPredictions = elevations.reduce((sum, elev) => {
                     const elevEdgeResult = edgeResults.find(r => r.elevation === elev)
                     const validPoints = this.filterValidSamplingPoints(allSamplingPoints, elevEdgeResult)
@@ -154,7 +153,7 @@ export class AIPredictionService {
                         )
 
                         if (!imagePair) {
-                            console.warn(`[AI] 跳过 elevation=${elevation}, point=(${point.x}, ${point.y})`)
+                            console.warn(`[AI] Skipping elevation=${elevation}, point=(${point.x}, ${point.y})`)
                             completedCount++
                             continue
                         }
@@ -170,36 +169,40 @@ export class AIPredictionService {
                             prediction: prediction
                         })
 
-                        // 显示形状信息
+                        // Show shape info
                         let shapeInfo = ''
                         if (edgeResult) {
                             for (let i = 0; i < edgeResult.shapes.length; i++) {
                                 if (EdgeDetectionService.isPointInShape(point.x, point.y, edgeResult.shapes[i])) {
-                                    shapeInfo = ` [在形状${i}内]`
+                                    shapeInfo = ` [in shape ${i}]`
                                     break
                                 }
                             }
                         }
 
-                        // 计算补偿值
+                        // Calculate compensation value
                         let compensationInfo = ''
                         if (edgeResult && shapeInfo) {  // 如果点在某个形状内
                             for (let i = 0; i < edgeResult.shapes.length; i++) {
                                 if (EdgeDetectionService.isPointInShape(point.x, point.y, edgeResult.shapes[i])) {
-                                    const shapeHeights = this.shapeHeightData.get(elevation)  // 获取保存的形状高度
+                                    const shapeHeights = this.shapeHeightData.get(elevation)
                                     if (shapeHeights && shapeHeights[i] !== undefined) {
-                                        const compensation = shapeHeights[i] * (prediction - 1)  // 计算补偿值
-                                        compensationInfo = ` [补偿值: ${compensation.toFixed(1)}μm]`
+                                        const compensation = shapeHeights[i] * (prediction - 1)
+                                        compensationInfo = ` [compensation: ${compensation.toFixed(1)}μm]`
                                     }
                                     break
                                 }
                             }
                         }
+                        // Output progress every 50 points
+                        if ((pointIndex + 1) % 50 === 0) {
+                            console.log(`[AI] Elevation ${elevation}: processed ${pointIndex + 1}/${validSamplingPoints.length} points`)
+                            console.log(`[AI] Elevation ${elevation} current Point (${point.x.toString().padStart(4)}, ${point.y.toString().padStart(4)}): Z_metric_pred = ${prediction.toFixed(6)}${shapeInfo}${compensationInfo}`)
+                        }
 
-                        console.log(`[AI] Elevation ${elevation} Point (${point.x.toString().padStart(4)}, ${point.y.toString().padStart(4)}): Z_metric_pred = ${prediction.toFixed(6)}${shapeInfo}${compensationInfo}`)
 
                     } catch (error) {
-                        console.error(`[AI] 预测失败 elevation=${elevation}, point=(${point.x}, ${point.y}):`, error)
+                        console.error(`[AI] Prediction failed for elevation=${elevation}, point=(${point.x}, ${point.y}):`, error)
                         allResults.push({
                             x: point.x,
                             y: point.y,
@@ -213,26 +216,22 @@ export class AIPredictionService {
                         const progress = 30 + (completedCount / totalPredictions) * 60
                         progressCallback?.({
                             stage: 'predicting',
-                            message: `AI预测中... (${completedCount}/${totalPredictions})`,
+                            message: `AI prediction in progress... (${completedCount}/${totalPredictions})`,
                             progress: Math.round(progress)
                         })
                     }
                 }
             }
 
-            // 输出汇总
-            console.log(`[EdgeDetection] 🎯 边缘检测汇总:`)
+
             edgeResults.forEach(result => {
                 const totalArea = result.shapes.reduce((sum, s) => sum + s.area, 0)
-                console.log(`[EdgeDetection] Elevation ${result.elevation}: ${result.totalShapes} 个形状，总面积 ${totalArea.toFixed(0)} 像素²`)
+                console.log(`[EdgeDetection] Elevation ${result.elevation}: ${result.totalShapes} shapes, total area ${totalArea.toFixed(0)} pixels²`)
             })
 
 
 
-
-            // 🆕 在删除的代码位置添加这段新代码
-// 替换：收集Voronoi补偿数据并生成补偿STL
-            console.log(`[AI] 🏗️ 开始收集Voronoi补偿数据...`)
+            console.log(`[AI]️ Starting to collect Voronoi compensation data...`)
 
             const voronoiCompensationData = await this.collectVoronoiCompensationData(
                 edgeResults,
@@ -242,7 +241,7 @@ export class AIPredictionService {
             )
 
             if (voronoiCompensationData.length > 0) {
-                console.log(`[AI] 开始重新生成包含Voronoi补偿的STL...`)
+                console.log(`[AI] Starting to regenerate STL with Voronoi compensation...`)
 
                 try {
                     const contentStore = useContentStore()
@@ -250,55 +249,51 @@ export class AIPredictionService {
                     // 重新生成包含Voronoi补偿的STL
                     await contentStore.requestNewStlData(
                         precision,
-                        false,  // 这些参数暂时写死，可以后续优化
+                        false,
                         0,
                         false,
                         0,
                         0,
                         0,
                         0,
-                        true,   // binary
-                        voronoiCompensationData  // 🔑 关键：传入Voronoi补偿数据
+                        true,
+                        voronoiCompensationData
                     )
 
-                    console.log(`[AI] Voronoi补偿STL生成完成！前端预览已更新`)
+                    console.log(`[AI] Voronoi compensation STL generation completed! Frontend preview updated`)
 
                 } catch (error) {
-                    console.error(`[AI] Voronoi补偿STL生成失败:`, error)
+                    console.error(`[AI] Failed to generate Voronoi compensation STL:`, error)
                 }
             } else {
-                console.log(`[AI] 无需要补偿的Voronoi区域，保持原始STL`)
+                console.log(`[AI] No Voronoi regions need compensation, keeping original STL`)
             }
 
-
-
-
-            // 修改progress message
             progressCallback?.({
                 stage: 'completed',
-                message: `AI预测+Voronoi补偿STL生成完成！`,
+                message: `AI prediction + Voronoi compensation STL generation completed!`,
                 progress: 100
             })
 
-            console.log(`[AI] 🎨 开始生成Voronoi划分可视化...`)
+            console.log(`[AI] Starting to generate Voronoi division visualization...`)
             await this.generateVoronoiVisualizations(edgeResults, allResults, availableElevations, precision)
 
             return allResults
 
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error)
-            console.error('[AI] 预测流程失败:', error)
+            console.error('[AI] Prediction process failed:', error)
 
             progressCallback?.({
                 stage: 'error',
-                message: `AI预测失败: ${errorMessage}`
+                message: `AI prediction failed: ${errorMessage}`
             })
 
             throw error
         }
     }
     /**
-     * 🆕 新增方法：收集Voronoi补偿数据
+     * Collect Voronoi compensation data for STL generation
      */
     private static async collectVoronoiCompensationData(
         edgeResults: EdgeDetectionResult[],
@@ -309,32 +304,29 @@ export class AIPredictionService {
 
         const voronoiCompensationData: VoronoiCompensationData[] = []
 
-        // 遍历每个elevation
         for (const edgeResult of edgeResults) {
             const elevation = edgeResult.elevation
 
             if (edgeResult.shapes.length === 0) continue
 
-            console.log(`[AI] 收集 Elevation ${elevation} 的Voronoi补偿数据...`)
+            console.log(`[AI] Collecting Voronoi compensation data for elevation ${elevation}...`)
 
-            // 1. 获取当前elevation的画布
             const canvas = SlicerService.getSlice(elevation)
             if (!canvas) continue
 
-            // 2. 收集当前elevation的所有有效点和补偿值
+            // Collect all valid points and compensation values for current elevation
             const elevationValidPoints: Array<{x: number, y: number, compensation: number}> = []
 
             allResults.forEach(result => {
-                // 检查该点在哪个形状内
                 for (let shapeIndex = 0; shapeIndex < edgeResult.shapes.length; shapeIndex++) {
                     if (EdgeDetectionService.isPointInShape(result.x, result.y, edgeResult.shapes[shapeIndex])) {
                         const shapeHeights = this.shapeHeightData.get(elevation)
                         if (shapeHeights && shapeHeights[shapeIndex] !== undefined) {
-                            // 计算补偿值：形状高度 × (预测值 - 1)
+                            // Calculate compensation: shape height × (prediction - 1)
                             const compensation = shapeHeights[shapeIndex] * (result.prediction - 1)
                             const compensationCeiled = Math.ceil(Math.abs(compensation))
 
-                            if (compensationCeiled > 0) {  // 只处理正补偿
+                            if (compensationCeiled > 0) {
                                 elevationValidPoints.push({
                                     x: result.x,
                                     y: result.y,
@@ -342,27 +334,25 @@ export class AIPredictionService {
                                 })
                             }
                         }
-                        break  // 找到形状后退出循环
+                        break
                     }
                 }
             })
 
             if (elevationValidPoints.length === 0) continue
 
-            // 3. 为每个形状进行Voronoi划分
+            // Perform Voronoi division for each shape
             const allVoronoiRegions: VoronoiCompensationRegion[] = []
 
             edgeResult.shapes.forEach((shape, shapeIndex) => {
-                // 筛选当前形状内的点
                 const shapePoints = elevationValidPoints.filter(point =>
                     EdgeDetectionService.isPointInShape(point.x, point.y, shape)
                 )
 
                 if (shapePoints.length === 0) return
 
-                console.log(`[AI] 形状${shapeIndex}: ${shapePoints.length}个补偿点`)
+                console.log(`[AI] Shape ${shapeIndex}: ${shapePoints.length} compensation points`)
 
-                // 🔑 关键：进行Voronoi划分
                 const voronoiCells = VoronoiService.divideShape(
                     shapePoints,
                     shape,
@@ -370,35 +360,35 @@ export class AIPredictionService {
                     canvas.height
                 )
 
-                // 转换为补偿数据格式
                 voronoiCells.forEach(cell => {
                     allVoronoiRegions.push({
                         polygon: cell.polygon,
                         compensation: cell.compensation,
                         seedPoint: cell.seedPoint,
-                        canvasHeight: canvas.height  // 添加画布高度
+                        canvasHeight: canvas.height
                     })
                 })
             })
 
-            // 4. 保存当前elevation的所有Voronoi区域
             if (allVoronoiRegions.length > 0) {
                 voronoiCompensationData.push({
                     elevation: elevation,
                     regions: allVoronoiRegions
                 })
 
-                console.log(`[AI] Elevation ${elevation}: 收集到${allVoronoiRegions.length}个Voronoi补偿区域`)
+                console.log(`[AI] Elevation ${elevation}: collected ${allVoronoiRegions.length} Voronoi compensation regions`)
             }
         }
 
         const totalRegions = voronoiCompensationData.reduce((sum, data) => sum + data.regions.length, 0)
-        console.log(`[AI] 总计收集到 ${totalRegions} 个Voronoi补偿区域`)
+        console.log(`[AI] Total collected ${totalRegions} Voronoi compensation regions`)
 
         return voronoiCompensationData
     }
+
+
     /**
-     * 新增：生成所有elevation的Voronoi可视化
+     * Generate Voronoi visualizations for all elevations
      */
     private static async generateVoronoiVisualizations(
         edgeResults: EdgeDetectionResult[],
@@ -411,24 +401,22 @@ export class AIPredictionService {
             const elevation = edgeResult.elevation
 
             if (edgeResult.shapes.length === 0) {
-                console.log(`[Voronoi] Elevation ${elevation} 无形状，跳过`)
+                console.log(`[Voronoi] Elevation ${elevation} has no shapes, skipping`)
                 continue
             }
 
-            console.log(`[Voronoi] 处理 Elevation ${elevation}...`)
+            console.log(`[Voronoi] Processing elevation ${elevation}...`)
 
-            // 1. 获取当前elevation的画布
             const canvas = SlicerService.getSlice(elevation)
             if (!canvas) {
-                console.warn(`[Voronoi] 无法获取 elevation ${elevation} 的切片`)
+                console.warn(`[Voronoi] Cannot get slice for elevation ${elevation}`)
                 continue
             }
 
-            // 2. 收集当前elevation的所有有效点和补偿值
+            // Collect all valid points and compensation values for current elevation
             const elevationValidPoints: Array<{x: number, y: number, compensation: number}> = []
 
             allResults.forEach(result => {
-                // 检查该点是否在当前elevation的任何形状内
                 for (let shapeIndex = 0; shapeIndex < edgeResult.shapes.length; shapeIndex++) {
                     if (EdgeDetectionService.isPointInShape(result.x, result.y, edgeResult.shapes[shapeIndex])) {
                         const shapeHeights = this.shapeHeightData.get(elevation)
@@ -437,7 +425,7 @@ export class AIPredictionService {
                             elevationValidPoints.push({
                                 x: result.x,
                                 y: result.y,
-                                compensation: Math.round(compensation * 10) / 10  // 保留1位小数
+                                compensation: Math.round(compensation * 10) / 10
                             })
                         }
                         break
@@ -446,27 +434,25 @@ export class AIPredictionService {
             })
 
             if (elevationValidPoints.length === 0) {
-                console.log(`[Voronoi] Elevation ${elevation} 无有效点，跳过`)
+                console.log(`[Voronoi] Elevation ${elevation} has no valid points, skipping`)
                 continue
             }
 
-            // 3. 为每个形状分别进行Voronoi划分
+            // Perform Voronoi division for each shape separately
             const voronoiResult: VoronoiResult = {
                 elevation: elevation,
                 shapes: []
             }
 
             edgeResult.shapes.forEach((shape, shapeIndex) => {
-                // 筛选当前形状内的点
                 const shapePoints = elevationValidPoints.filter(point =>
                     EdgeDetectionService.isPointInShape(point.x, point.y, shape)
                 )
 
                 if (shapePoints.length === 0) return
 
-                console.log(`[Voronoi] 形状${shapeIndex}: ${shapePoints.length}个有效点`)
+                console.log(`[Voronoi] Shape ${shapeIndex}: ${shapePoints.length} valid points`)
 
-                // 进行Voronoi划分
                 const voronoiCells = VoronoiService.divideShape(
                     shapePoints,
                     shape,
@@ -480,7 +466,7 @@ export class AIPredictionService {
                 })
             })
 
-            // 4. 生成可视化图像
+            // Generate visualization image
             VoronoiService.generateVoronoiVisualization(
                 canvas,
                 voronoiResult,
@@ -488,80 +474,73 @@ export class AIPredictionService {
             )
         }
 
-        console.log(`[AI] Voronoi可视化生成完成`)
+        console.log(`[AI] Voronoi visualization generation completed`)
     }
+
+
     /**
-     * 过滤出在形状内的有效采样点
+     * Filter valid sampling points within detected shapes
      */
     private static filterValidSamplingPoints(
         allPoints: SamplingPoint[],
         edgeResult: EdgeDetectionResult | undefined
     ): SamplingPoint[] {
         if (!edgeResult || edgeResult.shapes.length === 0) {
-            console.warn('[AI] 没有检测到形状，返回所有采样点')
+            console.warn('[AI] No shapes detected, returning all sampling points')
             return allPoints
         }
 
         const validPoints: SamplingPoint[] = []
-        const shapePointCounts: number[] = new Array(edgeResult.shapes.length).fill(0)  // 新增：统计每个形状的点数
+        const shapePointCounts: number[] = new Array(edgeResult.shapes.length).fill(0)
 
-        // 1. 原有逻辑：收集所有在形状内的有效点
+        // Collect all valid points within shapes
         allPoints.forEach(point => {
             let isInAnyShape = false
 
-            // 检查点在哪个形状内，并统计
             edgeResult.shapes.forEach((shape, shapeIndex) => {
                 if (EdgeDetectionService.isPointInShape(point.x, point.y, shape)) {
-                    if (!isInAnyShape) {  // 避免重复计入validPoints
+                    if (!isInAnyShape) {
                         validPoints.push(point)
                         isInAnyShape = true
                     }
-                    shapePointCounts[shapeIndex]++  // 统计该形状的点数
+                    shapePointCounts[shapeIndex]++
                 }
             })
         })
 
-        // 2. 输出每个形状的点数统计（保持原有逻辑）
-        console.log(`[AI] 各形状内有效点数量:`)
+        // Output point count statistics for each shape
+        console.log(`[AI] Valid point count for each shape:`)
         edgeResult.shapes.forEach((shape, index) => {
-            console.log(`[AI]   形状${index}: ${shapePointCounts[index]} 个点`)
+            console.log(`[AI]   Shape ${index}: ${shapePointCounts[index]} points`)
         })
 
-        // 3. 新增：为每个形状选择并输出5个分散点（仅用于显示）
-        console.log(`[AI] 各形状的4个分散代表点:`)
-        edgeResult.shapes.forEach((shape, shapeIndex) => {
-            // 收集当前形状内的所有候选点
-            const candidatePoints: SamplingPoint[] = []
-            allPoints.forEach(point => {
-                if (EdgeDetectionService.isPointInShape(point.x, point.y, shape)) {
-                    candidatePoints.push(point)
-                }
-            })
-
-            if (candidatePoints.length === 0) {
-                console.log(`[AI]   形状${shapeIndex}: 无候选点`)
-                return
-            }
-
-            // 选择5个分散点
-            const dispersedPoints = this.selectDispersedPoints(candidatePoints, shape, 5)
-
-            // 输出分散点坐标
-            const coordsStr = dispersedPoints.map(p => `(${p.x},${p.y})`).join(', ')
-            console.log(`[AI]   形状${shapeIndex}: ${coordsStr}`)
-        })
+        // Select and output 5 dispersed points for each shape (for display only)
+        // console.log(`[AI] 5 dispersed representative points for each shape:`)
+        // edgeResult.shapes.forEach((shape, shapeIndex) => {
+        //     const candidatePoints: SamplingPoint[] = []
+        //     allPoints.forEach(point => {
+        //         if (EdgeDetectionService.isPointInShape(point.x, point.y, shape)) {
+        //             candidatePoints.push(point)
+        //         }
+        //     })
+        //
+        //     if (candidatePoints.length === 0) {
+        //         console.log(`[AI]   Shape ${shapeIndex}: no candidate points`)
+        //         return
+        //     }
+        //
+        //     const dispersedPoints = this.selectDispersedPoints(candidatePoints, shape, 5)
+        //     const coordsStr = dispersedPoints.map(p => `(${p.x},${p.y})`).join(', ')
+        //     console.log(`[AI]   Shape ${shapeIndex}: ${coordsStr}`)
+        // })
 
         const filterRatio = ((allPoints.length - validPoints.length) / allPoints.length * 100).toFixed(1)
-        console.log(`[AI] 过滤掉 ${allPoints.length - validPoints.length} 个空白区域点，节省 ${filterRatio}% 预测时间`)
+        console.log(`[AI] Filtered out ${allPoints.length - validPoints.length} background points, saved ${filterRatio}% prediction time`)
 
-        // 4. 返回所有有效点（保持原有预测逻辑）
         return validPoints
-
-
     }
-
     /**
-     * 新增：使用贪心算法选择分散的点（仅用于输出显示）
+     * 使用贪心算法选择分散的点
      */
     private static selectDispersedPoints(
         candidatePoints: SamplingPoint[],
@@ -621,16 +600,13 @@ export class AIPredictionService {
         return selectedPoints
     }
 
-    /**
-     * 新增：计算两点间距离
-     */
+
     private static calculateDistance(x1: number, y1: number, x2: number, y2: number): number {
         return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
     }
 
-
     /**
-     * 新增：检测每个形状的高度
+     * Detect height of each shape by analyzing slice layers
      */
     private static async detectShapeHeights(
         edgeResults: EdgeDetectionResult[],
@@ -640,20 +616,19 @@ export class AIPredictionService {
 
         for (const edgeResult of edgeResults) {
             const baseElevation = edgeResult.elevation
-            console.log(`[ShapeHeight] 检测elevation ${baseElevation}的形状高度...`)
+            console.log(`[ShapeHeight] Detecting shape heights for elevation ${baseElevation}...`)
 
             if (edgeResult.shapes.length === 0) {
-                console.log(`[ShapeHeight] elevation ${baseElevation}无形状，跳过`)
+                console.log(`[ShapeHeight] Elevation ${baseElevation} has no shapes, skipping`)
                 continue
             }
 
-            // 为每个形状检测高度
             const shapeHeights: number[] = []
 
             for (let shapeIndex = 0; shapeIndex < edgeResult.shapes.length; shapeIndex++) {
                 const shape = edgeResult.shapes[shapeIndex]
 
-                // 1. 收集当前形状内的候选点
+                // Collect candidate points within current shape
                 const firstCanvas = SlicerService.getSlice(baseElevation)
                 if (!firstCanvas) continue
 
@@ -665,7 +640,7 @@ export class AIPredictionService {
                     }
                 })
 
-                // 2. 选择5个分散点
+                // Select 5 dispersed points
                 const dispersedPoints = this.selectDispersedPoints(candidatePoints, shape, 5)
 
                 if (dispersedPoints.length === 0) {
@@ -673,7 +648,7 @@ export class AIPredictionService {
                     continue
                 }
 
-                // 3. 沿Z方向检测高度
+                // Detect height along Z direction
                 const shapeHeight = this.detectSingleShapeHeight(
                     dispersedPoints,
                     baseElevation,
@@ -681,65 +656,65 @@ export class AIPredictionService {
                 )
                 shapeHeights.push(shapeHeight)
             }
-            // 保存形状高度数据
+
+            // Save shape height data
             this.shapeHeightData.set(baseElevation, shapeHeights)
 
-            // 输出结果
-            console.log(`[ShapeHeight] Elevation ${baseElevation}的形状高度结果:`)
+            // Output results
+            console.log(`[ShapeHeight] Shape height results for elevation ${baseElevation}:`)
             edgeResult.shapes.forEach((shape, index) => {
                 const startElev = baseElevation
-                const endElev = baseElevation + shapeHeights[index] - 100  // 减去100因为最后一层是失效的
-                console.log(`[ShapeHeight]   形状${index}: 高度 ${shapeHeights[index]}μm (从elevation ${startElev} 到 ${endElev})`)
+                const endElev = baseElevation + shapeHeights[index] - 100
+                console.log(`[ShapeHeight]   Shape ${index}: height ${shapeHeights[index]}μm (from elevation ${startElev} to ${endElev})`)
             })
         }
     }
 
 
-
     /**
-     * 检测单个形状的高度
+     * Detect height of single shape by checking pixel colors across elevations
      */
     private static detectSingleShapeHeight(
         dispersedPoints: SamplingPoint[],
         baseElevation: number,
         availableElevations: number[]
     ): number {
-        console.log(`[ShapeHeight] 开始检测形状高度，基准elevation: ${baseElevation}`)
-        console.log(`[ShapeHeight] 检测点坐标: ${dispersedPoints.map(p => `(${p.x},${p.y})`).join(', ')}`)
+        console.log(`[ShapeHeight] Starting shape height detection, base elevation: ${baseElevation}`)
+        console.log(`[ShapeHeight] Detection point coordinates: ${dispersedPoints.map(p => `(${p.x},${p.y})`).join(', ')}`)
 
-        // 获取从baseElevation开始向上的所有切片
+        // Get all slices from baseElevation upward
         const upperElevations = availableElevations
             .filter(elev => elev >= baseElevation)
             .sort((a, b) => a - b)
 
-        console.log(`[ShapeHeight] 可用的上层elevations: ${upperElevations.join(', ')}`)
+        console.log(`[ShapeHeight] Available upper elevations: ${upperElevations.join(', ')}`)
 
         let lastValidElevation = baseElevation
 
-        // 逐层检查
+        // Check layer by layer
         for (const elevation of upperElevations) {
-            console.log(`[ShapeHeight] 检查elevation ${elevation}...`)
+            console.log(`[ShapeHeight] Checking elevation ${elevation}...`)
 
             const canvas = SlicerService.getSlice(elevation)
             if (!canvas) {
-                console.log(`[ShapeHeight] elevation ${elevation}的切片不存在，跳过`)
+                console.log(`[ShapeHeight] Slice for elevation ${elevation} does not exist, skipping`)
                 continue
             }
 
-            // 检查5个分散点是否都是黑色
+            // Check if all 5 dispersed points are black
             const allPointsBlack = this.areAllPointsBlack(dispersedPoints, canvas)
 
             if (allPointsBlack) {
                 lastValidElevation = elevation
-                console.log(`[ShapeHeight] elevation ${elevation}: 所有点都是黑色 ✓`)
+                console.log(`[ShapeHeight] Elevation ${elevation}: all points are black ✓`)
             } else {
-                console.log(`[ShapeHeight] elevation ${elevation}: 发现白色像素 ✗，停止检测`)
+                console.log(`[ShapeHeight] Elevation ${elevation}: found white pixels ✗, stopping detection`)
                 break
             }
         }
 
         const height = lastValidElevation - baseElevation + 100
-        console.log(`[ShapeHeight] 计算高度: ${lastValidElevation} - ${baseElevation} + 100 = ${height}μm`)
+        console.log(`[ShapeHeight] Calculated height: ${lastValidElevation} - ${baseElevation} + 100 = ${height}μm`)
 
         return height
     }
@@ -753,7 +728,7 @@ export class AIPredictionService {
         for (const point of points) {
             // 1. 确保点在画布范围内
             if (point.x < 0 || point.x >= canvas.width || point.y < 0 || point.y >= canvas.height) {
-                console.log(`[ShapeHeight] 点(${point.x}, ${point.y})超出画布范围，跳过`)
+                console.log(`[ShapeHeight] Point (${point.x}, ${point.y}) is out of canvas bounds, skipping`)
                 continue
             }
 
@@ -767,12 +742,11 @@ export class AIPredictionService {
             // 4. 判断是否为黑色
             const isBlack = grayValue < 128  // 小于128认为是黑色
 
-            // 5. 调试输出（可选）
-            console.log(`[ShapeHeight] 点(${point.x}, ${point.y}): RGB(${r},${g},${b}) = 灰度${grayValue.toFixed(1)} → ${isBlack ? '黑色' : '白色'}`)
+            //console.log(`[ShapeHeight] Point (${point.x}, ${point.y}): RGB(${r},${g},${b}) = gray ${grayValue.toFixed(1)} → ${isBlack ? 'black' : 'white'}`)
 
             if (!isBlack) {
-                console.log(`[ShapeHeight] 发现白色像素，停止检测`)
-                return false  // 有一个点不是黑色，立即返回false
+                console.log(`[ShapeHeight] Found white pixel at (${point.x}, ${point.y}), stopping detection`)
+                return false
             }
         }
 
@@ -786,13 +760,13 @@ export class AIPredictionService {
 
     static getStatus(): { initialized: boolean, ready: boolean, message: string } {
         if (!this.isInitialized) {
-            return { initialized: false, ready: false, message: '未初始化' }
+            return { initialized: false, ready: false, message: 'Not initialized' }
         }
 
         if (!aiService.isReady()) {
-            return { initialized: true, ready: false, message: '模型未加载' }
+            return { initialized: true, ready: false, message: 'Model not loaded' }
         }
 
-        return { initialized: true, ready: true, message: '准备就绪' }
+        return { initialized: true, ready: true, message: 'Ready' }
     }
 }

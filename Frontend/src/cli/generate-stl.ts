@@ -9,5 +9,5 @@ const absJson = path.resolve(jsonPath)
 const absOut  = path.resolve(outPath)
 
 generateStl(absJson, absOut)
-    .then(finalPath => console.log('STL 生成完成:', finalPath))
-    .catch(e => console.error('STL生成失败:', e))
+    .then(finalPath => console.log('STL generation completed:', finalPath))
+    .catch(e => console.error('STL generation failed:', e));
