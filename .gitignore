@@ -1,0 +1,12 @@
+
+node_modules/
+Frontend/node_modules/
+Backend/node_modules/
+Frontend/public/quick_guide.mp4
+Frontend/public/quick_guide_h264.mp4
+.DS_Store
+.idea/
+*.iml
+
+dist/
+build/
