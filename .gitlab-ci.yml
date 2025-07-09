@@ -16,7 +16,7 @@ before_script:
 build:
   stage: build
   script:
-    - npm run build-only
+    - npm run build
     - echo "Compiling the code..."
     - echo "Compile complete."
   artifacts:
