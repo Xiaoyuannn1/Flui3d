@@ -1,0 +1,25 @@
+image: node:20
+
+stages:
+  - build
+  - deploy
+
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - node_modules/
+
+before_script:
+  - corepack enable
+  - npm i
+
+build:
+  stage: build
+  script:
+    - npm run build-only
+    - echo "Compiling the code..."
+    - echo "Compile complete."
+  artifacts:
+    paths:
+      - dist/
+    expire_in: never
