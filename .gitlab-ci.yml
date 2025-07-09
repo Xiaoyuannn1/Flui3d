@@ -15,7 +15,7 @@ before_script:
 install_dependencies:
   stage: install
   script:
-    - npm install
+    - npm install --save d3-contour d3-delaunay mesh-slice-polygon point-in-polygon polygon-clipping
   artifacts:
     paths:
       - Frontend/node_modules/
