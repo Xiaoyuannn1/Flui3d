@@ -1,19 +1,25 @@
 image: node:20
 
 stages:
+  - install
   - build
-  - deploy
 
 cache:
   key: ${CI_COMMIT_REF_SLUG}
   paths:
-    - node_modules/
+    - Frontend/node_modules/
 
 before_script:
-  - corepack enable
-  - npm i
+  - cd Frontend
 
-build:
+install_dependencies:
+  stage: install
+  script:
+    - npm install
+  artifacts:
+    paths:
+      - Frontend/node_modules/
+build_frontend:
   stage: build
   script:
     - npm run build
@@ -21,5 +27,4 @@ build:
     - echo "Compile complete."
   artifacts:
     paths:
-      - dist/
-    expire_in: never
+      - Frontend/dist/
